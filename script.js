@@ -72,13 +72,16 @@ if (labSelect && timetableDiv && user) {
 
         let cellText = slot.status;
         let color = "#eee";
+
         if (slot.status === "Booked") {
-          cellText = `Booked (${slot.class_info || "N/A"})`;
-          color = "#ffc0cb";
+          cellText = `Booked by ${slot.faculty_name || "Unknown"}<br>(${slot.class_info || "N/A"})`;
+          color = "#ffdddd";
         } else if (slot.status === "Regular") {
-          color = "#bbb";
+          cellText = `Regular (Admin)`;
+          color = "#dddddd";
         } else {
-          color = "#c0f0c0";
+          cellText = "Free";
+          color = "#d4f8d4";
         }
 
         const canClick = (slot.status === "Free") ||
