@@ -150,19 +150,25 @@ async function handleClick(slotId, status) {
   }
 }
 
-// ===== Admin Right-Click Handler =====
+// Admin Right-Click: Toggle Free ↔ Regular and enter description
 async function handleRightClick(e, slotId, currentStatus) {
   e.preventDefault(); // prevent browser context menu
 
   const targetStatus = currentStatus === "Regular" ? "Free" : "Regular";
-  if (!confirm(`Change status to "${targetStatus}"?`)) return;
+  let classInfo = null;
+
+  if (targetStatus === "Regular") {
+    classInfo = prompt("Enter reason/class info for regular slot (e.g., II-Sec-E):");
+    if (!classInfo) return; // cancel if empty
+  }
 
   const res = await fetch("http://127.0.0.1:5000/api/block", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       slot_id: slotId,
-      status: targetStatus
+      status: targetStatus,
+      class_info: classInfo
     })
   });
 
