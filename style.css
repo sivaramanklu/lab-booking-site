@@ -67,17 +67,18 @@ label {
   word-break: break-word;
 }
 
-/* Colors for statuses */
-td[style*="background:#ffc0cb"] { /* Booked */
-  color: #800000;
+/* Slot Status Colors */
+td[style*="background:#ffdddd"] { /* Booked */
+  color: #990000;
   font-weight: bold;
 }
 
-td[style*="background:#bbb"] { /* Regular */
-  color: #000;
+td[style*="background:#dddddd"] { /* Regular */
+  color: #333;
+  font-style: italic;
 }
 
-td[style*="background:#c0f0c0"] { /* Free */
+td[style*="background:#d4f8d4"] { /* Free */
   color: #006400;
   font-weight: bold;
 }
@@ -95,28 +96,12 @@ td[style*="background:#c0f0c0"] { /* Free */
     padding: 8px;
     font-size: 13px;
   }
-/* Booked slot (pink) */
-td[style*="background:#ffdddd"] {
-  color: #990000;
-  font-weight: bold;
-}
-
-/* Regular slot (gray) */
-td[style*="background:#dddddd"] {
-  color: #333;
-  font-style: italic;
-}
-
-/* Free slot (green) */
-td[style*="background:#d4f8d4"] {
-  color: #006400;
-  font-weight: bold;
-}
 
   #labSelect {
     width: 100%;
   }
 }
+
 /* Login Page Styling */
 .login-container {
   max-width: 400px;
