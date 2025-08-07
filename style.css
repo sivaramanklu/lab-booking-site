@@ -95,6 +95,23 @@ td[style*="background:#c0f0c0"] { /* Free */
     padding: 8px;
     font-size: 13px;
   }
+/* Booked slot (pink) */
+td[style*="background:#ffdddd"] {
+  color: #990000;
+  font-weight: bold;
+}
+
+/* Regular slot (gray) */
+td[style*="background:#dddddd"] {
+  color: #333;
+  font-style: italic;
+}
+
+/* Free slot (green) */
+td[style*="background:#d4f8d4"] {
+  color: #006400;
+  font-weight: bold;
+}
 
   #labSelect {
     width: 100%;
