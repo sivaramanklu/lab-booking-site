@@ -37,16 +37,18 @@ if (labSelect && timetableDiv && user) {
     "01:00-01:50", "02:00-02:50", "03:00-03:50", "04:00-04:50"
   ];
 
+  labSelect.addEventListener("change", () => {
+    loadTimetable(labSelect.value);
+  });
+
+  loadLabs();
+
   async function loadLabs() {
     const res = await fetch("http://127.0.0.1:5000/api/labs");
     const labs = await res.json();
     labSelect.innerHTML = labs.map(lab => `<option value="${lab.id}">${lab.name}</option>`).join('');
     loadTimetable(labs[0].id);
   }
-
-  labSelect.addEventListener("change", () => {
-    loadTimetable(labSelect.value);
-  });
 
   async function loadTimetable(labId) {
     const res = await fetch(`http://127.0.0.1:5000/api/timetable/${labId}`);
@@ -93,32 +95,47 @@ if (labSelect && timetableDiv && user) {
     html += `</table>`;
     return html;
   }
+}
 
-  async function handleClick(slotId, status) {
-    if (status === "Free") {
-      const classInfo = prompt("Enter class info (e.g., 2nd Year A):");
-      if (!classInfo) return;
-      const res = await fetch("http://127.0.0.1:5000/api/book", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: slotId, faculty_id: user.user_id, class_info: classInfo })
-      });
-      const result = await res.json();
-      if (result.success) loadTimetable(labSelect.value);
-      else alert(result.message);
+// ===== Booking & Release Handler (Global Scope) =====
+async function handleClick(slotId, status) {
+  const user = JSON.parse(localStorage.getItem("user"));
+  if (!user) return;
+
+  if (status === "Free") {
+    const classInfo = prompt("Enter class info (e.g., 2nd Year A):");
+    if (!classInfo) return;
+    const res = await fetch("http://127.0.0.1:5000/api/book", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: slotId,
+        faculty_id: user.user_id,
+        class_info: classInfo
+      })
+    });
+    const result = await res.json();
+    if (result.success) {
+      document.getElementById("labSelect") && loadTimetable(document.getElementById("labSelect").value);
     } else {
-      if (!confirm("Release this booking?")) return;
-      const res = await fetch("http://127.0.0.1:5000/api/release", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: slotId, faculty_id: user.user_id, is_admin: user.is_admin })
-      });
-      const result = await res.json();
-      if (result.success) loadTimetable(labSelect.value);
-      else alert(result.message);
+      alert(result.message);
+    }
+  } else {
+    if (!confirm("Release this booking?")) return;
+    const res = await fetch("http://127.0.0.1:5000/api/release", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: slotId,
+        faculty_id: user.user_id,
+        is_admin: user.is_admin
+      })
+    });
+    const result = await res.json();
+    if (result.success) {
+      document.getElementById("labSelect") && loadTimetable(document.getElementById("labSelect").value);
+    } else {
+      alert(result.message);
     }
   }
-
-  // Initialize dashboard
-  loadLabs();
 }
