@@ -74,7 +74,7 @@ if (labSelect && timetableDiv && user) {
         let color = "#eee";
 
         if (slot.status === "Regular") {
-          cellText = `Regular (Admin)`;
+          cellText = `Regular<br>${slot.class_info || ""}`;
           color = "#dddddd";
         } else if (slot.status === "Booked") {
           const isAdminBooking = slot.faculty_name?.toLowerCase() === "admin";
