@@ -77,7 +77,6 @@ if (labSelect && timetableDiv && user) {
           cellText = `Regular (Admin)`;
           color = "#dddddd";
         } else if (slot.status === "Booked") {
-          // Only show faculty name if not admin
           const isAdminBooking = slot.faculty_name?.toLowerCase() === "admin";
           cellText = isAdminBooking
             ? "Booked"
@@ -88,14 +87,17 @@ if (labSelect && timetableDiv && user) {
           color = "#d4f8d4";
         }
 
-
         const canClick = (slot.status === "Free") ||
           (slot.status === "Booked" && (slot.faculty_id === user.user_id || user.is_admin));
 
-        html += `<td style="background:${color};cursor:${canClick ? 'pointer' : 'default'}" 
-                    onclick="${canClick ? `handleClick(${slot.id}, '${slot.status}')` : ''}">
-                    ${cellText}
-                 </td>`;
+        const canRightClick = user.is_admin && slot.status !== "Booked";
+
+        html += `<td 
+          style="background:${color};cursor:${canClick ? 'pointer' : 'default'}"
+          onclick="${canClick ? `handleClick(${slot.id}, '${slot.status}')` : ''}"
+          oncontextmenu="${canRightClick ? `handleRightClick(event, ${slot.id}, '${slot.status}')` : ''}">
+          ${cellText}
+        </td>`;
       }
       html += `</tr>`;
     });
@@ -105,7 +107,7 @@ if (labSelect && timetableDiv && user) {
   }
 }
 
-// ===== Booking & Release Handler (Global Scope) =====
+// ===== Booking & Release Handler =====
 async function handleClick(slotId, status) {
   const user = JSON.parse(localStorage.getItem("user"));
   if (!user) return;
@@ -147,7 +149,32 @@ async function handleClick(slotId, status) {
     }
   }
 }
-// Logout handler
+
+// ===== Admin Right-Click Handler =====
+async function handleRightClick(e, slotId, currentStatus) {
+  e.preventDefault(); // prevent browser context menu
+
+  const targetStatus = currentStatus === "Regular" ? "Free" : "Regular";
+  if (!confirm(`Change status to "${targetStatus}"?`)) return;
+
+  const res = await fetch("http://127.0.0.1:5000/api/block", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      slot_id: slotId,
+      status: targetStatus
+    })
+  });
+
+  const result = await res.json();
+  if (result.success) {
+    document.getElementById("labSelect") && loadTimetable(document.getElementById("labSelect").value);
+  } else {
+    alert(result.message || "Failed to update slot.");
+  }
+}
+
+// ===== Logout Button =====
 document.addEventListener("DOMContentLoaded", () => {
   const logoutBtn = document.getElementById("logoutBtn");
   if (logoutBtn) {
