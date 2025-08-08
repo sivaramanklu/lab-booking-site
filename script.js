@@ -1,7 +1,34 @@
 // ===== Shared =====
-const user = JSON.parse(localStorage.getItem("user"));
+const user = JSON.parse(localStorage.getItem("user") || "null");
 
-// format helper
+// ---------- Smart API base detection ----------
+const API_BASE = (() => {
+  try {
+    const host = window.location.hostname;
+    if (host === '127.0.0.1' || host === 'localhost') {
+      return `http://${host}:5000`;
+    }
+    if (window.location.protocol === 'file:') {
+      return 'http://127.0.0.1:5000';
+    }
+    return `${window.location.protocol}//${window.location.host}`;
+  } catch (e) {
+    return 'http://127.0.0.1:5000';
+  }
+})();
+
+// safeFetch helper
+async function safeFetch(url, opts) {
+  try {
+    const res = await fetch(url, opts);
+    let data = null;
+    try { data = await res.json(); } catch (e) { /* ignore */ }
+    return { ok: res.ok, status: res.status, data, res };
+  } catch (err) {
+    return { ok: false, networkError: true, error: err };
+  }
+}
+
 function formatDate(isoStr) {
   if (!isoStr) return '';
   const d = new Date(isoStr + 'T00:00:00');
@@ -10,24 +37,21 @@ function formatDate(isoStr) {
   return `${dd}-${months[d.getMonth()]}-${d.getFullYear()}`;
 }
 
-// reload lab select helper (if dashboard present)
 async function reloadLabSelectIfPresent() {
   try {
     const sel = document.getElementById('labSelect');
     if (!sel) return;
-    const res = await fetch("http://127.0.0.1:5000/api/labs");
-    const labs = await res.json();
+    const r = await safeFetch(`${API_BASE}/api/labs`);
+    if (!r.ok) { sel.innerHTML = `<option value="">(Labs failed)</option>`; return; }
+    const labs = r.data;
     sel.innerHTML = labs.map(lab => `<option value="${lab.id}">${lab.name}</option>`).join('');
     if (sel.options.length > 0) {
       const prev = sel.value;
-      if (prev && [...sel.options].some(o=>o.value === prev)) {
-        sel.value = prev;
-      } else {
-        sel.value = sel.options[0].value;
-      }
+      if (prev && [...sel.options].some(o=>o.value === prev)) sel.value = prev;
+      else sel.value = sel.options[0].value;
       sel.dispatchEvent(new Event('change'));
     }
-  } catch (e) { /* ignore */ }
+  } catch (e) { console.error(e); }
 }
 
 // ===== Login =====
@@ -37,26 +61,30 @@ if (loginForm) {
     e.preventDefault();
     const facultyId = document.getElementById("facultyId").value;
     const password = document.getElementById("password").value;
-    const res = await fetch("http://127.0.0.1:5000/api/login", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ faculty_id: facultyId, password }),
+    const r = await safeFetch(`${API_BASE}/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ faculty_id: facultyId, password })
     });
-    const data = await res.json();
-    if (data.success) {
+    if (r.networkError) {
+      document.getElementById("loginMsg").textContent = `Network error — cannot reach backend at ${API_BASE}.`;
+      return;
+    }
+    const data = r.data || {};
+    if (r.ok && data.success) {
       localStorage.setItem("user", JSON.stringify(data));
       window.location.href = "dashboard.html";
     } else {
-      document.getElementById("loginMsg").textContent = data.message;
+      document.getElementById("loginMsg").textContent = (data && data.message) ? data.message : `Login failed (status ${r.status})`;
     }
   });
 }
 
-// ===== Dashboard =====
+// ===== Dashboard logic =====
 const labSelect = document.getElementById("labSelect");
 const timetableDiv = document.getElementById("timetable");
 
 if (labSelect && timetableDiv && user) {
-  // Create Admin link if admin (keeps previous behavior)
   if (user.is_admin) {
     const anc = document.createElement('a');
     anc.href = "admin.html";
@@ -67,38 +95,16 @@ if (labSelect && timetableDiv && user) {
     if (container) container.insertBefore(anc, container.firstChild.nextSibling);
   }
 
-  // Add modern Logout button in header if not present
+  // add modern logout if absent
   (function ensureLogoutButton() {
-    // prefer existing #logoutBtn; otherwise create one
     if (!document.getElementById('logoutBtn')) {
       const header = document.querySelector('.container > div');
-      if (header) {
-        const btn = document.createElement('button');
-        btn.id = 'logoutBtn';
-        btn.className = 'btn-logout';
-        btn.title = 'Logout';
-        btn.textContent = 'Logout';
-        btn.style.marginLeft = '12px';
-        // append to header's right-side container if exists
-        header.appendChild(btn);
-      } else {
-        // fallback insert at top of container
-        const btn = document.createElement('button');
-        btn.id = 'logoutBtn';
-        btn.className = 'btn-logout';
-        btn.title = 'Logout';
-        btn.textContent = 'Logout';
-        document.querySelector('.container').insertBefore(btn, document.querySelector('.container').firstChild);
-      }
+      const btn = document.createElement('button');
+      btn.id = 'logoutBtn'; btn.className = 'btn-logout'; btn.textContent = 'Logout';
+      if (header) header.appendChild(btn); else document.querySelector('.container').insertBefore(btn, document.querySelector('.container').firstChild);
     }
-    // wire logout
     const lb = document.getElementById('logoutBtn');
-    if (lb) {
-      lb.addEventListener('click', () => {
-        localStorage.clear();
-        window.location.href = "index.html";
-      });
-    }
+    if (lb) lb.addEventListener('click', () => { localStorage.clear(); window.location.href = "index.html"; });
   })();
 
   const days = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
@@ -112,8 +118,10 @@ if (labSelect && timetableDiv && user) {
   })();
 
   async function loadTimetable(labId) {
-    const res = await fetch(`http://127.0.0.1:5000/api/timetable/${labId}`);
-    const slots = await res.json();
+    const r = await safeFetch(`${API_BASE}/api/timetable/${labId}`);
+    if (r.networkError) { timetableDiv.innerHTML = `<div style="color:#b91c1c">Cannot reach backend at ${API_BASE}.</div>`; return; }
+    if (!r.ok) { timetableDiv.innerHTML = `<div style="color:#b91c1c">Failed to load timetable (status ${r.status}).</div>`; return; }
+    const slots = r.data;
     timetableDiv.innerHTML = generateTable(slots);
   }
 
@@ -177,22 +185,22 @@ async function handleClick(slotId, status, dateIso) {
   if (status === "Free") {
     const classInfo = prompt("Enter class info (e.g., 2nd Year A):");
     if (!classInfo) return;
-    const res = await fetch("http://127.0.0.1:5000/api/book", {
+    const r = await safeFetch(`${API_BASE}/api/book`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: slotId, date: dateIso, faculty_id: user.user_id, class_info: classInfo })
     });
-    const result = await res.json();
-    if (result.success) await reloadLabSelectIfPresent();
-    else alert(result.message || "Booking failed");
+    if (r.networkError) { alert(`Network error — cannot reach backend at ${API_BASE}.`); return; }
+    if (r.ok && r.data && r.data.success) await reloadLabSelectIfPresent();
+    else alert(r.data && r.data.message ? r.data.message : `Booking failed (status ${r.status})`);
   } else if (status === "Booked") {
     if (!confirm("Release this booking?")) return;
-    const res = await fetch("http://127.0.0.1:5000/api/release", {
+    const r = await safeFetch(`${API_BASE}/api/release`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: slotId, date: dateIso, faculty_id: user.user_id, is_admin: user.is_admin })
     });
-    const result = await res.json();
-    if (result.success) await reloadLabSelectIfPresent();
-    else alert(result.message || "Release failed");
+    if (r.networkError) { alert(`Network error — cannot reach backend at ${API_BASE}.`); return; }
+    if (r.ok && r.data && r.data.success) await reloadLabSelectIfPresent();
+    else alert(r.data && r.data.message ? r.data.message : `Release failed (status ${r.status})`);
   }
 }
 
@@ -205,13 +213,13 @@ async function handleRightClick(e, slotId, currentStatus) {
     classInfo = prompt("Enter description for this regular block (e.g., II-Sec-E):");
     if (!classInfo) return;
   }
-  const res = await fetch("http://127.0.0.1:5000/api/block", {
+  const r = await safeFetch(`${API_BASE}/api/block`, {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ slot_id: slotId, status: targetStatus, class_info: classInfo })
   });
-  const result = await res.json();
-  if (result.success) await reloadLabSelectIfPresent();
-  else alert(result.message || "Failed to update slot.");
+  if (r.networkError) { alert(`Network error — cannot reach backend at ${API_BASE}.`); return; }
+  if (r.ok && r.data && r.data.success) await reloadLabSelectIfPresent();
+  else alert(r.data && r.data.message ? r.data.message : `Failed to update slot (status ${r.status})`);
 }
 
 // ===== Admin page (users, labs, weekend modal) =====
@@ -233,21 +241,23 @@ if (window.location.pathname.endsWith('admin.html') || window.location.pathname.
     const msgEl = document.getElementById("createMsg");
     msgEl.textContent = '';
     if (!name || !faculty_id || !password) { msgEl.textContent = "Name, Faculty ID and Password are required."; return; }
-    const res = await fetch("http://127.0.0.1:5000/api/users", {
+    const r = await safeFetch(`${API_BASE}/api/users`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ requester_faculty_id: user.faculty_id, name, faculty_id, password, is_admin })
     });
-    const data = await res.json();
-    if (data.success) { document.getElementById("new_name").value=''; document.getElementById("new_faculty_id").value=''; document.getElementById("new_password").value=''; document.getElementById("new_is_admin").checked=false; loadUsers(); }
-    else msgEl.textContent = data.message || "Failed to create user";
+    if (r.networkError) { msgEl.textContent = `Network error - can't reach ${API_BASE}`; return; }
+    const data = r.data || {};
+    if (r.ok && data.success) { document.getElementById("new_name").value=''; document.getElementById("new_faculty_id").value=''; document.getElementById("new_password").value=''; document.getElementById("new_is_admin").checked=false; loadUsers(); }
+    else msgEl.textContent = data.message || `Failed to create user (status ${r.status})`;
   });
 
   async function loadUsers() {
     const wrap = document.getElementById("usersTableWrap"); if (!wrap) return;
     wrap.innerHTML = "Loading...";
-    const res = await fetch(`http://127.0.0.1:5000/api/users?requester=${user.faculty_id}`);
-    if (!res.ok) { wrap.innerHTML = "Failed to fetch users."; return; }
-    const users = await res.json();
+    const r = await safeFetch(`${API_BASE}/api/users?requester=${user.faculty_id}`);
+    if (r.networkError) { wrap.innerHTML = `Cannot reach backend at ${API_BASE}`; return; }
+    if (!r.ok) { wrap.innerHTML = `Failed to fetch users (status ${r.status})`; return; }
+    const users = r.data;
     let html = `<table style="width:100%;border-collapse:collapse"><tr style="background:#eee"><th>Name</th><th>Faculty ID</th><th>Is Admin</th><th>Actions</th></tr>`;
     users.forEach(u => {
       html += `<tr><td>${u.name}</td><td>${u.faculty_id}</td><td>${u.is_admin ? 'Yes' : 'No'}</td><td>
@@ -265,21 +275,23 @@ if (window.location.pathname.endsWith('admin.html') || window.location.pathname.
     const name = document.getElementById("new_lab_name").value.trim();
     const msgEl = document.getElementById("createLabMsg"); msgEl.textContent = '';
     if (!name) { msgEl.textContent = "Lab name required"; return; }
-    const res = await fetch("http://127.0.0.1:5000/api/labs", {
+    const r = await safeFetch(`${API_BASE}/api/labs`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ requester_faculty_id: user.faculty_id, name })
     });
-    const data = await res.json();
-    if (data.success) { document.getElementById("new_lab_name").value=''; loadLabsAdmin(); await reloadLabSelectIfPresent(); }
-    else msgEl.textContent = data.message || "Failed to create lab";
+    if (r.networkError) { msgEl.textContent = `Network error - can't reach ${API_BASE}`; return; }
+    const data = r.data || {};
+    if (r.ok && data.success) { document.getElementById("new_lab_name").value=''; loadLabsAdmin(); await reloadLabSelectIfPresent(); }
+    else msgEl.textContent = data.message || `Failed to create lab (status ${r.status})`;
   });
 
   async function loadLabsAdmin() {
     const wrap = document.getElementById("labsTableWrap"); if (!wrap) return;
     wrap.innerHTML = "Loading...";
-    const res = await fetch(`http://127.0.0.1:5000/api/labs`);
-    if (!res.ok) { wrap.innerHTML = "Failed to fetch labs."; return; }
-    const labs = await res.json();
+    const r = await safeFetch(`${API_BASE}/api/labs`);
+    if (r.networkError) { wrap.innerHTML = `Cannot reach backend at ${API_BASE}`; return; }
+    if (!r.ok) { wrap.innerHTML = `Failed to fetch labs (status ${r.status})`; return; }
+    const labs = r.data;
     let html = `<table style="width:100%;border-collapse:collapse"><tr style="background:#eee"><th>Lab Name</th><th>Actions</th></tr>`;
     labs.forEach(l => {
       html += `<tr><td>${l.name}</td><td>
@@ -296,24 +308,26 @@ if (window.location.pathname.endsWith('admin.html') || window.location.pathname.
     const current = unescape(nameEscaped);
     const newName = prompt("New lab name:", current);
     if (!newName) return;
-    const res = await fetch(`http://127.0.0.1:5000/api/labs/${id}`, {
+    const r = await safeFetch(`${API_BASE}/api/labs/${id}`, {
       method: "PUT", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ requester_faculty_id: user.faculty_id, name: newName })
     });
-    const data = await res.json();
-    if (data.success) { loadLabsAdmin(); await reloadLabSelectIfPresent(); }
-    else alert(data.message || "Failed to update lab");
+    if (r.networkError) { alert(`Network error — cannot reach backend at ${API_BASE}`); return; }
+    const data = r.data || {};
+    if (r.ok && data.success) { loadLabsAdmin(); await reloadLabSelectIfPresent(); }
+    else alert(data.message || `Failed to update lab (status ${r.status})`);
   };
 
   window.deleteLab = async function(id) {
     if (!confirm("Delete this lab? This will remove its timetable and future bookings.")) return;
-    const res = await fetch(`http://127.0.0.1:5000/api/labs/${id}`, {
+    const r = await safeFetch(`${API_BASE}/api/labs/${id}`, {
       method: "DELETE", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ requester_faculty_id: user.faculty_id })
     });
-    const data = await res.json();
-    if (data.success) { loadLabsAdmin(); await reloadLabSelectIfPresent(); }
-    else alert(data.message || "Failed to delete lab");
+    if (r.networkError) { alert(`Network error — cannot reach backend at ${API_BASE}`); return; }
+    const data = r.data || {};
+    if (r.ok && data.success) { loadLabsAdmin(); await reloadLabSelectIfPresent(); }
+    else alert(data.message || `Failed to delete lab (status ${r.status})`);
   };
 
   window.editUser = async function (id, nameEscaped, facultyId, isAdminFlag) {
@@ -321,22 +335,24 @@ if (window.location.pathname.endsWith('admin.html') || window.location.pathname.
     const newName = prompt("New name:", name) || name;
     const newPassword = prompt("New password (leave empty to keep unchanged):", "");
     const newIsAdmin = confirm("Make this user an admin? OK = Yes, Cancel = No");
-    const res = await fetch(`http://127.0.0.1:5000/api/users/${id}`, {
+    const r = await safeFetch(`${API_BASE}/api/users/${id}`, {
       method: "PUT", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ requester_faculty_id: user.faculty_id, name: newName, password: newPassword, is_admin: newIsAdmin })
     });
-    const data = await res.json();
-    if (data.success) loadUsers(); else alert(data.message || "Update failed");
+    if (r.networkError) { alert(`Network error — cannot reach backend at ${API_BASE}`); return; }
+    const data = r.data || {};
+    if (r.ok && data.success) loadUsers(); else alert(data.message || `Update failed (status ${r.status})`);
   };
 
   window.deleteUser = async function (id, facultyId) {
     if (!confirm(`Delete faculty ${facultyId}?`)) return;
-    const res = await fetch(`http://127.0.0.1:5000/api/users/${id}`, {
+    const r = await safeFetch(`${API_BASE}/api/users/${id}`, {
       method: "DELETE", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ requester_faculty_id: user.faculty_id })
     });
-    const data = await res.json();
-    if (data.success) loadUsers(); else alert(data.message || "Delete failed");
+    if (r.networkError) { alert(`Network error — cannot reach backend at ${API_BASE}`); return; }
+    const data = r.data || {};
+    if (r.ok && data.success) loadUsers(); else alert(data.message || `Delete failed (status ${r.status})`);
   };
 
   // initial loads
@@ -353,42 +369,38 @@ if (window.location.pathname.endsWith('admin.html') || window.location.pathname.
   const modalSave = document.getElementById('modalSave');
   const modalCancel = document.getElementById('modalCancel');
 
-  // expose globally so inline onclick works
   window.openWeekendModal = async function(labId, labNameEscaped) {
-    // populate target dropdown with Global + labs
     modalTarget.innerHTML = `<option value="global">Global Defaults</option>`;
-    const resLabs = await fetch("http://127.0.0.1:5000/api/labs");
-    const labs = await resLabs.json();
+    const rLabs = await safeFetch(`${API_BASE}/api/labs`);
+    if (!rLabs.ok) { alert(`Cannot load labs from backend at ${API_BASE}.`); return; }
+    const labs = rLabs.data;
     labs.forEach(l => {
       const sel = document.createElement('option');
       sel.value = String(l.id);
       sel.text = l.name;
       modalTarget.appendChild(sel);
     });
-    // default select to the lab we clicked
     modalTarget.value = String(labId);
-
-    // load configs for selected lab
     await loadModalValues();
-
-    // show modal
     modal.setAttribute('aria-hidden', 'false');
   };
 
   async function loadModalValues() {
     const val = modalTarget.value;
     if (val === 'global') {
-      // fetch global
-      const res = await fetch("http://127.0.0.1:5000/api/weekend/global");
-      const cfg = await res.json();
+      const r = await safeFetch(`${API_BASE}/api/weekend/global`);
+      if (r.networkError) { alert(`Cannot reach backend at ${API_BASE}`); return; }
+      if (!r.ok) { alert(`Failed to fetch global weekend settings (status ${r.status})`); return; }
+      const cfg = r.data;
       satDefault.value = cfg.saturday || '';
       sunDefault.value = cfg.sunday || '';
       satOverride.value = '';
       sunOverride.value = '';
     } else {
-      // lab-specific
-      const res = await fetch(`http://127.0.0.1:5000/api/weekend/${val}`);
-      const cfg = await res.json();
+      const r = await safeFetch(`${API_BASE}/api/weekend/${val}`);
+      if (r.networkError) { alert(`Cannot reach backend at ${API_BASE}`); return; }
+      if (!r.ok) { alert(`Failed to fetch lab weekend settings (status ${r.status})`); return; }
+      const cfg = r.data;
       satDefault.value = cfg.saturday.default_text || '';
       sunDefault.value = cfg.sunday.default_text || '';
       satOverride.value = cfg.saturday.override && cfg.saturday.override.exists ? (cfg.saturday.override.source_day || '') : '';
@@ -399,69 +411,61 @@ if (window.location.pathname.endsWith('admin.html') || window.location.pathname.
   modalTarget.addEventListener('change', loadModalValues);
   modalCancel.addEventListener('click', () => modal.setAttribute('aria-hidden', 'true'));
 
-  // Improved Save handler — handles global & lab targets, with feedback
   modalSave.addEventListener('click', async () => {
     modalSave.disabled = true;
     modalSave.textContent = 'Saving...';
-
     try {
       const target = modalTarget.value;
-
-      // Save defaults (global or lab)
       if (target === 'global') {
-        // Saturday
-        const r1 = await fetch("http://127.0.0.1:5000/api/weekend/default", {
+        // save global default using /api/weekend/default with lab_id: 'global'
+        const r1 = await safeFetch(`${API_BASE}/api/weekend/default`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ requester_faculty_id: user.faculty_id, lab_id: 'global', day: 'Saturday', custom_text: satDefault.value })
         });
-        const d1 = await r1.json();
-        if (!r1.ok || !d1.success) throw new Error(d1.message || 'Failed saving Saturday global default');
+        if (r1.networkError) throw new Error(`Network error — cannot reach ${API_BASE}`);
+        if (!r1.ok || !r1.data || !r1.data.success) throw new Error(r1.data && r1.data.message ? r1.data.message : `Failed (status ${r1.status})`);
 
-        // Sunday
-        const r2 = await fetch("http://127.0.0.1:5000/api/weekend/default", {
+        const r2 = await safeFetch(`${API_BASE}/api/weekend/default`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ requester_faculty_id: user.faculty_id, lab_id: 'global', day: 'Sunday', custom_text: sunDefault.value })
         });
-        const d2 = await r2.json();
-        if (!r2.ok || !d2.success) throw new Error(d2.message || 'Failed saving Sunday global default');
-
+        if (r2.networkError) throw new Error(`Network error — cannot reach ${API_BASE}`);
+        if (!r2.ok || !r2.data || !r2.data.success) throw new Error(r2.data && r2.data.message ? r2.data.message : `Failed (status ${r2.status})`);
       } else {
-        // lab-specific defaults
         const lab_id = parseInt(target,10);
-        const rSat = await fetch("http://127.0.0.1:5000/api/weekend/default", {
+        // lab defaults
+        const rSat = await safeFetch(`${API_BASE}/api/weekend/default`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ requester_faculty_id: user.faculty_id, lab_id, day: 'Saturday', custom_text: satDefault.value })
         });
-        const dSat = await rSat.json();
-        if (!rSat.ok || !dSat.success) throw new Error(dSat.message || 'Failed saving Saturday default');
+        if (rSat.networkError) throw new Error(`Network error — cannot reach ${API_BASE}`);
+        if (!rSat.ok || !rSat.data || !rSat.data.success) throw new Error(rSat.data && rSat.data.message ? rSat.data.message : `Failed (status ${rSat.status})`);
 
-        const rSun = await fetch("http://127.0.0.1:5000/api/weekend/default", {
+        const rSun = await safeFetch(`${API_BASE}/api/weekend/default`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ requester_faculty_id: user.faculty_id, lab_id, day: 'Sunday', custom_text: sunDefault.value })
         });
-        const dSun = await rSun.json();
-        if (!rSun.ok || !dSun.success) throw new Error(dSun.message || 'Failed saving Sunday default');
+        if (rSun.networkError) throw new Error(`Network error — cannot reach ${API_BASE}`);
+        if (!rSun.ok || !rSun.data || !rSun.data.success) throw new Error(rSun.data && rSun.data.message ? rSun.data.message : `Failed (status ${rSun.status})`);
 
-        // overrides for upcoming weekend (set/clear)
+        // overrides
         const satSrc = satOverride.value || null;
-        const sunSrc = sunOverride.value || null;
-
-        const rO1 = await fetch("http://127.0.0.1:5000/api/weekend/override", {
+        const rO1 = await safeFetch(`${API_BASE}/api/weekend/override`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ requester_faculty_id: user.faculty_id, lab_id, day: 'Saturday', source_day: satSrc })
         });
-        const dO1 = await rO1.json();
-        if (!rO1.ok || !dO1.success) throw new Error(dO1.message || 'Failed saving Saturday override');
+        if (rO1.networkError) throw new Error(`Network error — cannot reach ${API_BASE}`);
+        if (!rO1.ok || !rO1.data || !rO1.data.success) throw new Error(rO1.data && rO1.data.message ? rO1.data.message : `Failed (status ${rO1.status})`);
 
-        const rO2 = await fetch("http://127.0.0.1:5000/api/weekend/override", {
+        const sunSrc = sunOverride.value || null;
+        const rO2 = await safeFetch(`${API_BASE}/api/weekend/override`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ requester_faculty_id: user.faculty_id, lab_id, day: 'Sunday', source_day: sunSrc })
         });
-        const dO2 = await rO2.json();
-        if (!rO2.ok || !dO2.success) throw new Error(dO2.message || 'Failed saving Sunday override');
+        if (rO2.networkError) throw new Error(`Network error — cannot reach ${API_BASE}`);
+        if (!rO2.ok || !rO2.data || !rO2.data.success) throw new Error(rO2.data && rO2.data.message ? rO2.data.message : `Failed (status ${rO2.status})`);
       }
 
-      // reload admin lists and dashboard dropdown
       loadLabsAdmin();
       await reloadLabSelectIfPresent();
 
@@ -476,9 +480,9 @@ if (window.location.pathname.endsWith('admin.html') || window.location.pathname.
     }
   });
 
-} // end admin page block
+} // end admin block
 
-// ===== Logout (global) =====
+// global logout wiring
 document.addEventListener("DOMContentLoaded", () => {
   const logoutBtns = document.querySelectorAll("#logoutBtn");
   logoutBtns.forEach(btn => btn.addEventListener("click", () => {
