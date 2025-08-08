@@ -317,7 +317,7 @@ if (window.location.pathname.endsWith('admin.html') || window.location.pathname.
   const modalSave = document.getElementById('modalSave');
   const modalCancel = document.getElementById('modalCancel');
 
-  async function openWeekendModal(labId, labNameEscaped) {
+  window.openWeekendModal = async function(labId, labNameEscaped) {
     // populate target dropdown with Global + labs
     modalTarget.innerHTML = `<option value="global">Global Defaults</option>`;
     const resLabs = await fetch("http://127.0.0.1:5000/api/labs");
