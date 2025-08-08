@@ -130,15 +130,18 @@ if (labSelect && timetableDiv && user) {
           cellText = `Regular<br/>${slot.class_info || ""}`;
           color = "#dddddd";
         } else if (slot.status === "Booked") {
-          const isAdminBooking = slot.faculty_name?.toLowerCase() === "admin";
-          cellText = isAdminBooking
-            ? "Booked"
-            : `Booked by ${slot.faculty_name}<br/>(${slot.class_info || "N/A"})`;
+          // show faculty name and class info when available
+          if (slot.faculty_name) {
+            cellText = `Booked by ${slot.faculty_name}<br/>(${slot.class_info || "N/A"})`;
+          } else {
+            cellText = `Booked${slot.class_info ? `<br/>(${slot.class_info})` : ''}`;
+          }
           color = "#ffdddd";
         } else {
           cellText = "Free";
           color = "#d4f8d4";
         }
+
 
         const canClick = (slot.status === "Free") ||
           (slot.status === "Booked" && (String(slot.faculty_id) === String(user.user_id) || user.is_admin));
