@@ -97,3 +97,39 @@ td.free { background: #ecfdf5; color: #065f46; font-weight: 700; }
 
 /* small helper */
 small { color:#6b7280; }
+
+/* ---------- Login container (separate from the main .container) ---------- */
+.login-container {
+  max-width: 420px;
+  margin: 80px auto;
+  padding: 28px;
+  background: white;
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(20,30,60,0.06);
+  text-align: center;
+}
+
+.login-container h2 {
+  margin: 0 0 18px 0;
+  color: #111827;
+}
+
+.login-container input {
+  width: 100%;
+  padding: 12px 10px;
+  margin: 8px 0;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.login-container .btn {
+  width: 100%;
+  padding: 12px;
+  margin-top: 8px;
+  border-radius: 8px;
+  font-weight: 700;
+}
+
+/* small error message */
+.error-msg { color: #b91c1c; margin-top: 8px; font-size: 0.95rem; }
+
