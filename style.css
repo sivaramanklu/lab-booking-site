@@ -1,150 +1,99 @@
 /* Reset & Base Styles */
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
+body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #f3f5f9; color: #222; }
 
-body {
-  font-family: Arial, sans-serif;
-  margin: 0;
-  padding: 0;
-  background: #f0f0f0;
-}
-
-/* Container to center content */
+/* Container */
 .container {
-  max-width: 1200px;
+  max-width: 1100px;
   margin: 30px auto;
   padding: 20px;
   background: white;
-  box-shadow: 0 0 10px rgba(0,0,0,0.1);
-  border-radius: 8px;
+  box-shadow: 0 8px 20px rgba(20,30,60,0.08);
+  border-radius: 10px;
 }
 
 /* Headings */
-h1, h2 {
-  text-align: center;
-  margin-top: 0;
-  color: #333;
-}
+h1, h2, h3 { margin-top: 0; color: #1f2937; }
 
-/* Label and Dropdown */
-label {
-  display: block;
-  text-align: center;
-  margin: 15px 0 10px;
-  font-size: 16px;
-}
-
-#labSelect {
-  display: block;
-  margin: 0 auto 20px auto;
-  padding: 10px 15px;
-  font-size: 16px;
-  border-radius: 4px;
-  border: 1px solid #ccc;
-}
-
-/* Timetable container */
-#timetable {
-  overflow-x: auto;
-}
-
-/* Table Styling */
-#timetable table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 10px;
-  font-size: 14px;
-  background-color: white;
-}
-
-#timetable th,
-#timetable td {
-  padding: 10px;
-  text-align: center;
-  border: 1px solid #ccc;
-  min-width: 120px;
-  word-break: break-word;
-}
-
-/* Slot Status Colors */
-td[style*="background:#ffdddd"] { /* Booked */
-  color: #990000;
-  font-weight: bold;
-}
-
-td[style*="background:#dddddd"] { /* Regular */
-  color: #333;
-  font-style: italic;
-}
-
-td[style*="background:#d4f8d4"] { /* Free */
-  color: #006400;
-  font-weight: bold;
-}
-
-/* Responsive Tweaks */
-@media screen and (max-width: 768px) {
-  .container {
-    margin: 10px;
-    padding: 15px;
-  }
-
-  #timetable th,
-  #timetable td {
-    min-width: 100px;
-    padding: 8px;
-    font-size: 13px;
-  }
-
-  #labSelect {
-    width: 100%;
-  }
-}
-
-/* Login Page Styling */
-.login-container {
-  max-width: 400px;
-  margin: 80px auto;
-  padding: 30px;
-  background: white;
+/* Buttons */
+.btn {
+  display: inline-block;
+  padding: 8px 14px;
   border-radius: 8px;
-  box-shadow: 0 0 15px rgba(0,0,0,0.1);
-  text-align: center;
-}
-
-.login-container h2 {
-  margin-bottom: 20px;
-  color: #333;
-}
-
-.login-container input {
-  width: 100%;
-  padding: 12px;
-  margin: 10px 0;
-  font-size: 16px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-}
-
-.login-container button {
-  width: 100%;
-  padding: 12px;
-  background-color: #4CAF50;
-  color: white;
   border: none;
-  font-size: 16px;
-  border-radius: 4px;
+  background: #2563eb;
+  color: white;
   cursor: pointer;
-  margin-top: 10px;
+  font-weight: 600;
+}
+.btn:hover { filter: brightness(0.95); }
+.btn-secondary {
+  background: #e5e7eb;
+  color: #111827;
 }
 
-.login-container button:hover {
-  background-color: #45a049;
+/* Modern Logout style */
+.btn-logout {
+  background: transparent;
+  color: #374151;
+  border: 1px solid #e5e7eb;
+  padding: 6px 10px;
+  border-radius: 20px;
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+.btn-logout::after {
+  content: "⎋"; font-size: 12px; opacity: 0.9;
 }
 
-.error-msg {
-  color: red;
-  margin-top: 10px;
-  font-size: 14px;
+/* Inputs */
+input, select {
+  padding: 8px 10px;
+  margin: 6px 0;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  width: 100%;
 }
+
+/* Table */
+table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 14px; }
+th, td { padding: 10px; border: 1px solid #e6e9ef; text-align: center; min-width: 110px; }
+th { background: #f8fafc; }
+
+/* Status color tokens (cells have inline background too) */
+td.booked { background: #fff1f2; color: #7f1d1d; font-weight: 600; }
+td.regular { background: #f3f4f6; color: #111827; font-style: italic; }
+td.free { background: #ecfdf5; color: #065f46; font-weight: 700; }
+
+/* Responsive */
+@media screen and (max-width: 768px) {
+  .container { margin: 10px; padding: 14px; }
+  th, td { min-width: 90px; padding: 8px; font-size: 13px; }
+}
+
+/* Modal */
+.modal {
+  position: fixed;
+  left: 0; top: 0; right: 0; bottom: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 15, 25, 0.45);
+  z-index: 9999;
+}
+.modal[aria-hidden="false"] { display: flex; }
+.modal-content {
+  background: white;
+  width: 480px;
+  max-width: 92%;
+  border-radius: 10px;
+  padding: 20px;
+  box-shadow: 0 12px 30px rgba(10,20,40,0.18);
+}
+.modal-row { margin-bottom: 12px; }
+.modal-row label { display:block; font-weight:600; margin-bottom:6px; color:#374151; }
+.modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:8px; }
+
+/* small helper */
+small { color:#6b7280; }
