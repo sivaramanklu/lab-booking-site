@@ -10,6 +10,31 @@ function formatDate(isoStr) {
   return `${dd}-${months[d.getMonth()]}-${d.getFullYear()}`;
 }
 
+// Global helper to refresh lab <select> if dashboard is open
+async function reloadLabSelectIfPresent() {
+  try {
+    const sel = document.getElementById('labSelect');
+    if (!sel) return;
+    const res = await fetch("http://127.0.0.1:5000/api/labs");
+    const labs = await res.json();
+    sel.innerHTML = labs.map(lab => `<option value="${lab.id}">${lab.name}</option>`).join('');
+    // trigger change to load timetable for the selected (first) lab
+    if (sel.options.length > 0) {
+      // keep currently selected if possible
+      const prev = sel.value;
+      if (prev) {
+        sel.value = prev;
+        sel.dispatchEvent(new Event('change'));
+      } else {
+        sel.value = sel.options[0].value;
+        sel.dispatchEvent(new Event('change'));
+      }
+    }
+  } catch (err) {
+    /* ignore */
+  }
+}
+
 // ===== Login Page Logic =====
 const loginForm = document.getElementById("loginForm");
 if (loginForm) {
@@ -47,7 +72,9 @@ if (labSelect && timetableDiv && user) {
     anc.textContent = "Admin: Manage Faculties & Labs";
     anc.style.display = "inline-block";
     anc.style.margin = "8px";
-    document.querySelector('.container').insertBefore(anc, document.querySelector('.container').firstChild.nextSibling);
+    // insert near top of container
+    const container = document.querySelector('.container');
+    if (container) container.insertBefore(anc, container.firstChild.nextSibling);
   }
 
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -60,14 +87,14 @@ if (labSelect && timetableDiv && user) {
     loadTimetable(labSelect.value);
   });
 
-  loadLabs();
-
-  async function loadLabs() {
-    const res = await fetch("http://127.0.0.1:5000/api/labs");
-    const labs = await res.json();
-    labSelect.innerHTML = labs.map(lab => `<option value="${lab.id}">${lab.name}</option>`).join('');
-    loadTimetable(labs[0].id);
-  }
+  // load labs initially
+  (async function initDashboard() {
+    await reloadLabSelectIfPresent();
+    // ensure timetable shown for first lab
+    if (labSelect.options.length > 0) {
+      loadTimetable(labSelect.value);
+    }
+  })();
 
   async function loadTimetable(labId) {
     const res = await fetch(`http://127.0.0.1:5000/api/timetable/${labId}`);
@@ -121,10 +148,13 @@ if (labSelect && timetableDiv && user) {
         // pass date to handlers
         const dateParam = slot.date ? slot.date : '';
 
+        // Escape the status text so quotes don't break the onclick string
+        const safeStatus = (slot.status || '').replace(/'/g, "\\'");
+
         html += `<td 
           style="background:${color};cursor:${canClick ? 'pointer' : 'default'}"
-          onclick="${canClick ? `handleClick(${slot.id}, '${slot.status}', '${dateParam}')` : ''}"
-          oncontextmenu="${canRightClick ? `handleRightClick(event, ${slot.id}, '${slot.status}')` : ''}">
+          ${canClick ? `onclick="handleClick(${slot.id}, '${safeStatus}', '${dateParam.replace("'", "\\'")}')"` : ''}
+          ${canRightClick ? `oncontextmenu="handleRightClick(event, ${slot.id}, '${safeStatus}')"` : ''}>
           ${cellText}
         </td>`;
       }
@@ -161,7 +191,7 @@ async function handleClick(slotId, status, dateIso) {
     });
     const result = await res.json();
     if (result.success) {
-      document.getElementById("labSelect") && loadTimetable(document.getElementById("labSelect").value);
+      await reloadLabSelectIfPresent();
     } else {
       alert(result.message || "Booking failed");
     }
@@ -179,7 +209,7 @@ async function handleClick(slotId, status, dateIso) {
     });
     const result = await res.json();
     if (result.success) {
-      document.getElementById("labSelect") && loadTimetable(document.getElementById("labSelect").value);
+      await reloadLabSelectIfPresent();
     } else {
       alert(result.message || "Release failed");
     }
@@ -210,26 +240,37 @@ async function handleRightClick(e, slotId, currentStatus) {
 
   const result = await res.json();
   if (result.success) {
-    document.getElementById("labSelect") && loadTimetable(document.getElementById("labSelect").value);
+    await reloadLabSelectIfPresent();
   } else {
     alert(result.message || "Failed to update slot.");
   }
 }
 
 // ===== Admin Page Logic (admin.html) =====
-if (document.body && document.body.innerHTML.includes('Admin — Faculty Management') && user) {
-  // redirect non-admins
-  if (!user.is_admin) {
+// Use pathname detection (reliable) instead of searching innerHTML
+if (window.location.pathname.endsWith('admin.html') || window.location.pathname.endsWith('/admin.html')) {
+  // Ensure user exists and is admin
+  if (!user || !user.is_admin) {
     alert("Access denied. Admins only.");
     window.location.href = "index.html";
   }
 
+  // Back button
   const backBtn = document.getElementById("backBtn");
   if (backBtn) {
     backBtn.addEventListener("click", () => window.location.href = "dashboard.html");
   }
 
-  // create user
+  // Logout button (also on admin page)
+  const logoutBtn = document.getElementById("logoutBtn");
+  if (logoutBtn) {
+    logoutBtn.addEventListener("click", () => {
+      localStorage.clear();
+      window.location.href = "index.html";
+    });
+  }
+
+  // Create user
   const createBtn = document.getElementById("createUserBtn");
   if (createBtn) {
     createBtn.addEventListener("click", async () => {
@@ -268,9 +309,39 @@ if (document.body && document.body.innerHTML.includes('Admin — Faculty Managem
     });
   }
 
-  // load users
+  // Create lab
+  const createLabBtn = document.getElementById("createLabBtn");
+  if (createLabBtn) {
+    createLabBtn.addEventListener("click", async () => {
+      const name = document.getElementById("new_lab_name").value.trim();
+      const msgEl = document.getElementById("createLabMsg");
+      msgEl.textContent = '';
+      if (!name) {
+        msgEl.textContent = "Lab name required";
+        return;
+      }
+
+      const res = await fetch("http://127.0.0.1:5000/api/labs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requester_faculty_id: user.faculty_id, name })
+      });
+      const data = await res.json();
+      if (data.success) {
+        document.getElementById("new_lab_name").value = '';
+        loadLabsAdmin();
+        // refresh dashboard lab select if present
+        await reloadLabSelectIfPresent();
+      } else {
+        msgEl.textContent = data.message || "Failed to create lab";
+      }
+    });
+  }
+
+  // Load users
   async function loadUsers() {
     const wrap = document.getElementById("usersTableWrap");
+    if (!wrap) return;
     wrap.innerHTML = "Loading...";
     const res = await fetch(`http://127.0.0.1:5000/api/users?requester=${user.faculty_id}`);
     if (!res.ok) {
@@ -295,35 +366,10 @@ if (document.body && document.body.innerHTML.includes('Admin — Faculty Managem
     wrap.innerHTML = html;
   }
 
-  // ------- Lab management UI -------
-  const createLabBtn = document.getElementById("createLabBtn");
-  if (createLabBtn) {
-    createLabBtn.addEventListener("click", async () => {
-      const name = document.getElementById("new_lab_name").value.trim();
-      const msgEl = document.getElementById("createLabMsg");
-      msgEl.textContent = '';
-      if (!name) {
-        msgEl.textContent = "Lab name required";
-        return;
-      }
-
-      const res = await fetch("http://127.0.0.1:5000/api/labs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ requester_faculty_id: user.faculty_id, name })
-      });
-      const data = await res.json();
-      if (data.success) {
-        document.getElementById("new_lab_name").value = '';
-        loadLabsAdmin();
-      } else {
-        msgEl.textContent = data.message || "Failed to create lab";
-      }
-    });
-  }
-
+  // Load labs for admin
   async function loadLabsAdmin() {
     const wrap = document.getElementById("labsTableWrap");
+    if (!wrap) return;
     wrap.innerHTML = "Loading...";
     const res = await fetch(`http://127.0.0.1:5000/api/labs`);
     if (!res.ok) {
@@ -359,6 +405,7 @@ if (document.body && document.body.innerHTML.includes('Admin — Faculty Managem
     const data = await res.json();
     if (data.success) {
       loadLabsAdmin();
+      await reloadLabSelectIfPresent();
     } else {
       alert(data.message || "Failed to update lab");
     }
@@ -374,16 +421,13 @@ if (document.body && document.body.innerHTML.includes('Admin — Faculty Managem
     const data = await res.json();
     if (data.success) {
       loadLabsAdmin();
-      // if dashboard open, refresh its select (best effort)
-      if (typeof loadLabs === 'function') {
-        try { loadLabs(); } catch(e) {}
-      }
+      await reloadLabSelectIfPresent();
     } else {
       alert(data.message || "Failed to delete lab");
     }
   };
 
-  // expose editUser/deleteUser functions for users table (similar as before)
+  // expose editUser/deleteUser functions for users table
   window.editUser = async function (id, nameEscaped, facultyId, isAdminFlag) {
     const name = unescape(nameEscaped);
     const newName = prompt("New name:", name) || name;
@@ -423,18 +467,18 @@ if (document.body && document.body.innerHTML.includes('Admin — Faculty Managem
     }
   };
 
-  // initial loads
+  // initial loads (if elements present)
   loadUsers();
   loadLabsAdmin();
 }
 
 // ===== Logout Button (works on all pages) =====
 document.addEventListener("DOMContentLoaded", () => {
-  const logoutBtn = document.getElementById("logoutBtn");
-  if (logoutBtn) {
-    logoutBtn.addEventListener("click", () => {
+  const logoutBtns = document.querySelectorAll("#logoutBtn");
+  logoutBtns.forEach(btn => {
+    btn.addEventListener("click", () => {
       localStorage.clear();
       window.location.href = "index.html";
     });
-  }
+  });
 });
