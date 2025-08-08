@@ -1,0 +1,11 @@
+# create .gitignore with recommended entries
+cat  .gitignore EOF
+__pycache__
+.pyc
+.db
+venv
+.env
+.env.
+instance
+.DS_Store
+EOF
