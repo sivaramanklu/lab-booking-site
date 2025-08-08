@@ -44,7 +44,7 @@ if (labSelect && timetableDiv && user) {
   if (user.is_admin) {
     const anc = document.createElement('a');
     anc.href = "admin.html";
-    anc.textContent = "Admin: Manage Faculties";
+    anc.textContent = "Admin: Manage Faculties & Labs";
     anc.style.display = "inline-block";
     anc.style.margin = "8px";
     document.querySelector('.container').insertBefore(anc, document.querySelector('.container').firstChild.nextSibling);
@@ -295,9 +295,96 @@ if (document.body && document.body.innerHTML.includes('Admin — Faculty Managem
     wrap.innerHTML = html;
   }
 
-  // expose edit and delete to global scope so inline onclick can call them
+  // ------- Lab management UI -------
+  const createLabBtn = document.getElementById("createLabBtn");
+  if (createLabBtn) {
+    createLabBtn.addEventListener("click", async () => {
+      const name = document.getElementById("new_lab_name").value.trim();
+      const msgEl = document.getElementById("createLabMsg");
+      msgEl.textContent = '';
+      if (!name) {
+        msgEl.textContent = "Lab name required";
+        return;
+      }
+
+      const res = await fetch("http://127.0.0.1:5000/api/labs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requester_faculty_id: user.faculty_id, name })
+      });
+      const data = await res.json();
+      if (data.success) {
+        document.getElementById("new_lab_name").value = '';
+        loadLabsAdmin();
+      } else {
+        msgEl.textContent = data.message || "Failed to create lab";
+      }
+    });
+  }
+
+  async function loadLabsAdmin() {
+    const wrap = document.getElementById("labsTableWrap");
+    wrap.innerHTML = "Loading...";
+    const res = await fetch(`http://127.0.0.1:5000/api/labs`);
+    if (!res.ok) {
+      wrap.innerHTML = "Failed to fetch labs.";
+      return;
+    }
+    const labs = await res.json();
+    let html = `<table style="width:100%;border-collapse:collapse">
+      <tr style="background:#eee"><th>Lab Name</th><th>Actions</th></tr>`;
+    labs.forEach(l => {
+      html += `<tr>
+        <td>${l.name}</td>
+        <td>
+          <button onclick="editLab(${l.id}, '${escape(l.name)}')">Edit</button>
+          <button onclick="deleteLab(${l.id})">Delete</button>
+        </td>
+      </tr>`;
+    });
+    html += `</table>`;
+    wrap.innerHTML = html;
+  }
+
+  // expose editLab/deleteLab globally for inline handlers
+  window.editLab = async function(id, nameEscaped) {
+    const current = unescape(nameEscaped);
+    const newName = prompt("New lab name:", current);
+    if (!newName) return;
+    const res = await fetch(`http://127.0.0.1:5000/api/labs/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requester_faculty_id: user.faculty_id, name: newName })
+    });
+    const data = await res.json();
+    if (data.success) {
+      loadLabsAdmin();
+    } else {
+      alert(data.message || "Failed to update lab");
+    }
+  };
+
+  window.deleteLab = async function(id) {
+    if (!confirm("Delete this lab? This will remove its timetable and future bookings.")) return;
+    const res = await fetch(`http://127.0.0.1:5000/api/labs/${id}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requester_faculty_id: user.faculty_id })
+    });
+    const data = await res.json();
+    if (data.success) {
+      loadLabsAdmin();
+      // if dashboard open, refresh its select (best effort)
+      if (typeof loadLabs === 'function') {
+        try { loadLabs(); } catch(e) {}
+      }
+    } else {
+      alert(data.message || "Failed to delete lab");
+    }
+  };
+
+  // expose editUser/deleteUser functions for users table (similar as before)
   window.editUser = async function (id, nameEscaped, facultyId, isAdminFlag) {
-    // unescape name
     const name = unescape(nameEscaped);
     const newName = prompt("New name:", name) || name;
     const newPassword = prompt("New password (leave empty to keep unchanged):", "");
@@ -336,8 +423,9 @@ if (document.body && document.body.innerHTML.includes('Admin — Faculty Managem
     }
   };
 
-  // initial load
+  // initial loads
   loadUsers();
+  loadLabsAdmin();
 }
 
 // ===== Logout Button (works on all pages) =====
