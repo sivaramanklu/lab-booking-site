@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Admin — Manage Faculties</title>
+  <title>Admin — Manage Faculties & Labs</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <div class="container">
     <div style="display:flex;justify-content:space-between;align-items:center">
-      <h2>Admin — Faculty Management</h2>
+      <h2>Admin — Manage Faculties & Labs</h2>
       <div>
         <button id="backBtn">Back</button>
         <button id="logoutBtn">Logout</button>
@@ -31,6 +31,17 @@
     <section style="margin-top:30px">
       <h3>Existing Faculties</h3>
       <div id="usersTableWrap"></div>
+    </section>
+
+    <section style="margin-top:30px">
+      <h3>Manage Labs</h3>
+      <div style="max-width:600px">
+        <input id="new_lab_name" placeholder="New Lab name (e.g., Lab 11)" />
+        <button id="createLabBtn">Create Lab</button>
+        <p id="createLabMsg" style="color:red"></p>
+      </div>
+
+      <div id="labsTableWrap" style="margin-top:15px"></div>
     </section>
   </div>
 
