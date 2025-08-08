@@ -96,7 +96,7 @@ td.free { background: #ecfdf5; color: #065f46; font-weight: 700; }
   .timetable-table th, .timetable-table td { min-width: 90px; padding: 8px; font-size: 13px; }
 }
 
-/* ---------- Login container (separate from the main .container) ---------- */
+/* Login container */
 .login-container {
   max-width: 420px;
   margin: 80px auto;
@@ -106,52 +106,16 @@ td.free { background: #ecfdf5; color: #065f46; font-weight: 700; }
   box-shadow: 0 10px 30px rgba(20,30,60,0.06);
   text-align: center;
 }
-
-.login-container h2 {
-  margin: 0 0 18px 0;
-  color: #111827;
-}
-
-.login-container input {
-  width: 100%;
-  padding: 12px 10px;
-  margin: 8px 0;
-  border-radius: 8px;
-  border: 1px solid #e5e7eb;
-}
-
-.login-container .btn {
-  width: 100%;
-  padding: 12px;
-  margin-top: 8px;
-  border-radius: 8px;
-  font-weight: 700;
-}
-
-/* small error message */
+.login-container h2 { margin: 0 0 18px 0; color: #111827; }
+.login-container input { width: 100%; padding: 12px 10px; margin: 8px 0; border-radius: 8px; border: 1px solid #e5e7eb; }
+.login-container .btn { width: 100%; padding: 12px; margin-top: 8px; border-radius: 8px; font-weight: 700; }
 .error-msg { color: #b91c1c; margin-top: 8px; font-size: 0.95rem; }
 
 /* Modal */
-.modal {
-  position: fixed;
-  left: 0; top: 0; right: 0; bottom: 0;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  background: rgba(10, 15, 25, 0.45);
-  z-index: 9999;
-}
+.modal { position: fixed; left: 0; top: 0; right: 0; bottom: 0; display: none; align-items: center; justify-content: center; background: rgba(10, 15, 25, 0.45); z-index: 9999; }
 .modal[aria-hidden="false"] { display: flex; }
-.modal-content {
-  background: white;
-  width: 480px;
-  max-width: 92%;
-  border-radius: 10px;
-  padding: 20px;
-  box-shadow: 0 12px 30px rgba(10,20,40,0.18);
-}
+.modal-content { background: white; width: 480px; max-width: 92%; border-radius: 10px; padding: 20px; box-shadow: 0 12px 30px rgba(10,20,40,0.18); }
 .modal-row { margin-bottom: 12px; }
 .modal-row label { display:block; font-weight:600; margin-bottom:6px; color:#374151; }
 .modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:8px; }
-
 small { color:#6b7280; }
