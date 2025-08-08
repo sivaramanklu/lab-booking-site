@@ -1,7 +1,7 @@
 // ===== Shared =====
 const user = JSON.parse(localStorage.getItem("user"));
 
-// format date helper
+// format helper
 function formatDate(isoStr) {
   if (!isoStr) return '';
   const d = new Date(isoStr + 'T00:00:00');
@@ -30,7 +30,7 @@ async function reloadLabSelectIfPresent() {
   } catch (e) { /* ignore */ }
 }
 
-// ===== Login Logic =====
+// ===== Login =====
 const loginForm = document.getElementById("loginForm");
 if (loginForm) {
   loginForm.addEventListener("submit", async function (e) {
@@ -38,8 +38,7 @@ if (loginForm) {
     const facultyId = document.getElementById("facultyId").value;
     const password = document.getElementById("password").value;
     const res = await fetch("http://127.0.0.1:5000/api/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ faculty_id: facultyId, password }),
     });
     const data = await res.json();
@@ -52,7 +51,7 @@ if (loginForm) {
   });
 }
 
-// ===== Dashboard Logic =====
+// ===== Dashboard =====
 const labSelect = document.getElementById("labSelect");
 const timetableDiv = document.getElementById("timetable");
 
@@ -68,10 +67,7 @@ if (labSelect && timetableDiv && user) {
   }
 
   const days = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
-  const periods = [
-    "09:00-09:50","10:00-10:50","11:00-11:50","12:00-12:50",
-    "01:00-01:50","02:00-02:50","03:00-03:50","04:00-04:50"
-  ];
+  const periods = ["09:00-09:50","10:00-10:50","11:00-11:50","12:00-12:50","01:00-01:50","02:00-02:50","03:00-03:50","04:00-04:50"];
 
   labSelect.addEventListener("change", () => loadTimetable(labSelect.value));
 
@@ -90,7 +86,7 @@ if (labSelect && timetableDiv && user) {
     const dateByDay = {};
     for (const s of slots) if (!dateByDay[s.day]) dateByDay[s.day] = s.date;
 
-    let html = `<table border="1"><tr><th>Day<br/>Date</th>`;
+    let html = `<table><tr><th>Day<br/>Date</th>`;
     periods.forEach(p => html += `<th>${p}</th>`);
     html += `</tr>`;
 
@@ -102,29 +98,27 @@ if (labSelect && timetableDiv && user) {
         if (!slot) { html += `<td></td>`; continue; }
 
         let cellText = slot.status;
-        let color = "#eee";
-
+        let colorClass = '';
         if (slot.status === "Regular") {
           cellText = `${slot.class_info || ""}`;
-          color = "#dddddd";
+          colorClass = 'regular';
         } else if (slot.status === "Booked") {
           if (slot.faculty_name) {
             cellText = `Booked by ${slot.faculty_name}<br/>(${slot.class_info || "N/A"})`;
           } else {
             cellText = `Booked${slot.class_info ? `<br/>(${slot.class_info})` : ''}`;
           }
-          color = "#ffdddd";
+          colorClass = 'booked';
         } else {
           cellText = "Free";
-          color = "#d4f8d4";
+          colorClass = 'free';
         }
 
-        const canClick = (slot.status === "Free") ||
-          (slot.status === "Booked" && (String(slot.faculty_id) === String(user.user_id) || user.is_admin));
+        const canClick = (slot.status === "Free") || (slot.status === "Booked" && (String(slot.faculty_id) === String(user.user_id) || user.is_admin));
         const canRightClick = user.is_admin && slot.status !== "Booked";
         const dateParam = slot.date ? slot.date : '';
         const safeStatus = (slot.status || '').replace(/'/g, "\\'");
-        html += `<td style="background:${color};cursor:${canClick ? 'pointer' : 'default'}"
+        html += `<td class="${colorClass}" style="cursor:${canClick ? 'pointer' : 'default'}"
                     ${canClick ? `onclick="handleClick(${slot.id}, '${safeStatus}', '${dateParam.replace(/'/g,"\\'")}')"` : ''}
                     ${canRightClick ? `oncontextmenu="handleRightClick(event, ${slot.id}, '${safeStatus}')"` : ''}>
                   ${cellText}
@@ -148,27 +142,21 @@ async function handleClick(slotId, status, dateIso) {
     const classInfo = prompt("Enter class info (e.g., 2nd Year A):");
     if (!classInfo) return;
     const res = await fetch("http://127.0.0.1:5000/api/book", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: slotId, date: dateIso, faculty_id: user.user_id, class_info: classInfo
-      })
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: slotId, date: dateIso, faculty_id: user.user_id, class_info: classInfo })
     });
     const result = await res.json();
-    if (result.success) {
-      await reloadLabSelectIfPresent();
-    } else { alert(result.message || "Booking failed"); }
+    if (result.success) await reloadLabSelectIfPresent();
+    else alert(result.message || "Booking failed");
   } else if (status === "Booked") {
     if (!confirm("Release this booking?")) return;
     const res = await fetch("http://127.0.0.1:5000/api/release", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: slotId, date: dateIso, faculty_id: user.user_id, is_admin: user.is_admin })
     });
     const result = await res.json();
-    if (result.success) {
-      await reloadLabSelectIfPresent();
-    } else { alert(result.message || "Release failed"); }
+    if (result.success) await reloadLabSelectIfPresent();
+    else alert(result.message || "Release failed");
   }
 }
 
@@ -182,8 +170,7 @@ async function handleRightClick(e, slotId, currentStatus) {
     if (!classInfo) return;
   }
   const res = await fetch("http://127.0.0.1:5000/api/block", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+    method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ slot_id: slotId, status: targetStatus, class_info: classInfo })
   });
   const result = await res.json();
@@ -191,7 +178,7 @@ async function handleRightClick(e, slotId, currentStatus) {
   else alert(result.message || "Failed to update slot.");
 }
 
-// ===== Admin page logic (users + labs + weekend config) =====
+// ===== Admin page (users, labs, weekend modal) =====
 if (window.location.pathname.endsWith('admin.html') || window.location.pathname.endsWith('/admin.html')) {
   if (!user || !user.is_admin) { alert("Access denied. Admins only."); window.location.href = "index.html"; }
 
@@ -215,10 +202,8 @@ if (window.location.pathname.endsWith('admin.html') || window.location.pathname.
       body: JSON.stringify({ requester_faculty_id: user.faculty_id, name, faculty_id, password, is_admin })
     });
     const data = await res.json();
-    if (data.success) {
-      document.getElementById("new_name").value=''; document.getElementById("new_faculty_id").value=''; document.getElementById("new_password").value=''; document.getElementById("new_is_admin").checked=false;
-      loadUsers();
-    } else msgEl.textContent = data.message || "Failed to create user";
+    if (data.success) { document.getElementById("new_name").value=''; document.getElementById("new_faculty_id").value=''; document.getElementById("new_password").value=''; document.getElementById("new_is_admin").checked=false; loadUsers(); }
+    else msgEl.textContent = data.message || "Failed to create user";
   });
 
   async function loadUsers() {
@@ -238,7 +223,7 @@ if (window.location.pathname.endsWith('admin.html') || window.location.pathname.
     wrap.innerHTML = html;
   }
 
-  // LABS: create + display
+  // LABS management
   const createLabBtn = document.getElementById("createLabBtn");
   if (createLabBtn) createLabBtn.addEventListener("click", async () => {
     const name = document.getElementById("new_lab_name").value.trim();
@@ -249,11 +234,8 @@ if (window.location.pathname.endsWith('admin.html') || window.location.pathname.
       body: JSON.stringify({ requester_faculty_id: user.faculty_id, name })
     });
     const data = await res.json();
-    if (data.success) {
-      document.getElementById("new_lab_name").value = '';
-      loadLabsAdmin();
-      await reloadLabSelectIfPresent();
-    } else msgEl.textContent = data.message || "Failed to create lab";
+    if (data.success) { document.getElementById("new_lab_name").value=''; loadLabsAdmin(); await reloadLabSelectIfPresent(); }
+    else msgEl.textContent = data.message || "Failed to create lab";
   });
 
   async function loadLabsAdmin() {
@@ -267,14 +249,13 @@ if (window.location.pathname.endsWith('admin.html') || window.location.pathname.
       html += `<tr><td>${l.name}</td><td>
         <button onclick="editLab(${l.id}, '${escape(l.name)}')">Edit</button>
         <button onclick="deleteLab(${l.id})">Delete</button>
-        <button onclick="configureWeekend(${l.id})">Weekend</button>
+        <button onclick="openWeekendModal(${l.id}, '${escape(l.name)}')">Weekend</button>
       </td></tr>`;
     });
     html += `</table>`;
     wrap.innerHTML = html;
   }
 
-  // expose editLab/deleteLab globally
   window.editLab = async function(id, nameEscaped) {
     const current = unescape(nameEscaped);
     const newName = prompt("New lab name:", current);
@@ -299,7 +280,6 @@ if (window.location.pathname.endsWith('admin.html') || window.location.pathname.
     else alert(data.message || "Failed to delete lab");
   };
 
-  // expose user edit/delete
   window.editUser = async function (id, nameEscaped, facultyId, isAdminFlag) {
     const name = unescape(nameEscaped);
     const newName = prompt("New name:", name) || name;
@@ -323,80 +303,114 @@ if (window.location.pathname.endsWith('admin.html') || window.location.pathname.
     if (data.success) loadUsers(); else alert(data.message || "Delete failed");
   };
 
-  // ------------ Weekend configuration UI ------------
-  // Opens prompt-driven configuration for a lab's weekend behaviors
-  window.configureWeekend = async function(labId) {
-    // fetch current config
-    const res = await fetch(`http://127.0.0.1:5000/api/weekend/${labId}`);
-    if (!res.ok) { alert("Failed to fetch weekend config"); return; }
-    const cfg = await res.json();
-    // Saturday configuration
-    const satDefault = cfg.saturday.default_text || '';
-    const satOverride = cfg.saturday.override && cfg.saturday.override.exists ? cfg.saturday.override.source_day : null;
-    const satChoice = prompt(
-      `Lab ${labId} - Saturday config:\nCurrent default text: "${satDefault}"\nCurrent override (this upcoming Saturday): ${satOverride || 'none'}\n\nEnter command:\n1) To change default blocked text for Saturday, type: default:YOUR TEXT\n2) To set override to follow a weekday, type: override:Wednesday (Mon..Fri)\n3) To clear override, type: override:clear\n(Leave blank to skip)`,
-      ''
-    );
-    if (satChoice && satChoice.trim()) {
-      if (satChoice.startsWith('default:')) {
-        const text = satChoice.substring('default:'.length).trim();
-        await setWeekendDefault(labId, 'Saturday', text);
-      } else if (satChoice.startsWith('override:')) {
-        const arg = satChoice.substring('override:'.length).trim();
-        if (arg.toLowerCase() === 'clear') await setWeekendOverride(labId, 'Saturday', null);
-        else await setWeekendOverride(labId, 'Saturday', arg);
-      } else {
-        alert("Unrecognized command for Saturday. Use default: or override:");
-      }
-    }
-
-    // Sunday configuration
-    const sunDefault = cfg.sunday.default_text || '';
-    const sunOverride = cfg.sunday.override && cfg.sunday.override.exists ? cfg.sunday.override.source_day : null;
-    const sunChoice = prompt(
-      `Lab ${labId} - Sunday config:\nCurrent default text: "${sunDefault}"\nCurrent override (this upcoming Sunday): ${sunOverride || 'none'}\n\nEnter command:\n1) default:YOUR TEXT\n2) override:Friday (Mon..Fri)  OR override:clear\n(Leave blank to skip)`,
-      ''
-    );
-    if (sunChoice && sunChoice.trim()) {
-      if (sunChoice.startsWith('default:')) {
-        const text = sunChoice.substring('default:'.length).trim();
-        await setWeekendDefault(labId, 'Sunday', text);
-      } else if (sunChoice.startsWith('override:')) {
-        const arg = sunChoice.substring('override:'.length).trim();
-        if (arg.toLowerCase() === 'clear') await setWeekendOverride(labId, 'Sunday', null);
-        else await setWeekendOverride(labId, 'Sunday', arg);
-      } else {
-        alert("Unrecognized command for Sunday. Use default: or override:");
-      }
-    }
-
-    // reload admin lists and dashboard lab select
-    loadLabsAdmin();
-    await reloadLabSelectIfPresent();
-  };
-
-  async function setWeekendDefault(labId, day, customText) {
-    const res = await fetch("http://127.0.0.1:5000/api/weekend/default", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ requester_faculty_id: user.faculty_id, lab_id: labId, day, custom_text: customText })
-    });
-    const data = await res.json();
-    if (!data.success) alert(data.message || "Failed to set default");
-  }
-
-  async function setWeekendOverride(labId, day, sourceDay) {
-    const res = await fetch("http://127.0.0.1:5000/api/weekend/override", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ requester_faculty_id: user.faculty_id, lab_id: labId, day, source_day: sourceDay })
-    });
-    const data = await res.json();
-    if (!data.success) alert(data.message || "Failed to set override");
-  }
-
   // initial loads
   loadUsers();
   loadLabsAdmin();
-}
+
+  // ---- Weekend modal logic ----
+  const modal = document.getElementById('weekendModal');
+  const modalTarget = document.getElementById('modalTarget');
+  const satDefault = document.getElementById('satDefault');
+  const sunDefault = document.getElementById('sunDefault');
+  const satOverride = document.getElementById('satOverride');
+  const sunOverride = document.getElementById('sunOverride');
+  const modalSave = document.getElementById('modalSave');
+  const modalCancel = document.getElementById('modalCancel');
+
+  async function openWeekendModal(labId, labNameEscaped) {
+    // populate target dropdown with Global + labs
+    modalTarget.innerHTML = `<option value="global">Global Defaults</option>`;
+    const resLabs = await fetch("http://127.0.0.1:5000/api/labs");
+    const labs = await resLabs.json();
+    labs.forEach(l => {
+      const sel = document.createElement('option');
+      sel.value = String(l.id);
+      sel.text = l.name;
+      modalTarget.appendChild(sel);
+    });
+    // default select to the lab we clicked
+    modalTarget.value = String(labId);
+
+    // load configs for selected lab
+    await loadModalValues();
+
+    // show modal
+    modal.setAttribute('aria-hidden', 'false');
+  }
+
+  async function loadModalValues() {
+    const val = modalTarget.value;
+    if (val === 'global') {
+      // fetch global
+      const res = await fetch("http://127.0.0.1:5000/api/weekend/global");
+      const cfg = await res.json();
+      satDefault.value = cfg.saturday || '';
+      sunDefault.value = cfg.sunday || '';
+      // overrides not applicable for global; clear selects
+      satOverride.value = '';
+      sunOverride.value = '';
+    } else {
+      // lab-specific
+      const res = await fetch(`http://127.0.0.1:5000/api/weekend/${val}`);
+      const cfg = await res.json();
+      satDefault.value = cfg.saturday.default_text || '';
+      sunDefault.value = cfg.sunday.default_text || '';
+      satOverride.value = cfg.saturday.override && cfg.saturday.override.exists ? (cfg.saturday.override.source_day || '') : '';
+      sunOverride.value = cfg.sunday.override && cfg.sunday.override.exists ? (cfg.sunday.override.source_day || '') : '';
+    }
+  }
+
+  modalTarget.addEventListener('change', loadModalValues);
+  modalCancel.addEventListener('click', () => modal.setAttribute('aria-hidden', 'true'));
+
+  modalSave.addEventListener('click', async () => {
+    const target = modalTarget.value;
+    // Save defaults (global or lab)
+    if (target === 'global') {
+      // Saturday
+      await fetch("http://127.0.0.1:5000/api/weekend/default", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requester_faculty_id: user.faculty_id, lab_id: 'global', day: 'Saturday', custom_text: satDefault.value })
+      });
+      // Sunday
+      await fetch("http://127.0.0.1:5000/api/weekend/default", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requester_faculty_id: user.faculty_id, lab_id: 'global', day: 'Sunday', custom_text: sunDefault.value })
+      });
+    } else {
+      // lab-specific defaults
+      const lab_id = parseInt(target,10);
+      await fetch("http://127.0.0.1:5000/api/weekend/default", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requester_faculty_id: user.faculty_id, lab_id, day: 'Saturday', custom_text: satDefault.value })
+      });
+      await fetch("http://127.0.0.1:5000/api/weekend/default", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requester_faculty_id: user.faculty_id, lab_id, day: 'Sunday', custom_text: sunDefault.value })
+      });
+
+      // overrides for upcoming weekend (set/clear)
+      const satSrc = satOverride.value || null;
+      const sunSrc = sunOverride.value || null;
+      await fetch("http://127.0.0.1:5000/api/weekend/override", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requester_faculty_id: user.faculty_id, lab_id, day: 'Saturday', source_day: satSrc })
+      });
+      await fetch("http://127.0.0.1:5000/api/weekend/override", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requester_faculty_id: user.faculty_id, lab_id, day: 'Sunday', source_day: sunSrc })
+      });
+    }
+
+    // reload admin lists and dashboard dropdown
+    loadLabsAdmin();
+    await reloadLabSelectIfPresent();
+
+    modal.setAttribute('aria-hidden', 'true');
+    alert("Saved.");
+  });
+
+} // end admin page block
 
 // ===== Logout (global) =====
 document.addEventListener("DOMContentLoaded", () => {
