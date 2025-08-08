@@ -11,8 +11,8 @@
     <div style="display:flex;justify-content:space-between;align-items:center">
       <h2>Admin — Manage Faculties & Labs</h2>
       <div>
-        <button id="backBtn">Back</button>
-        <button id="logoutBtn">Logout</button>
+        <button id="backBtn" class="btn">Back</button>
+        <button id="logoutBtn" class="btn btn-logout">Logout</button>
       </div>
     </div>
 
@@ -23,7 +23,7 @@
         <input id="new_faculty_id" placeholder="Faculty ID (e.g. f123)" />
         <input id="new_password" placeholder="Password" />
         <label><input type="checkbox" id="new_is_admin" /> Is Admin</label>
-        <button id="createUserBtn">Create</button>
+        <button id="createUserBtn" class="btn">Create</button>
         <p id="createMsg" style="color:red"></p>
       </div>
     </section>
@@ -37,12 +37,59 @@
       <h3>Manage Labs</h3>
       <div style="max-width:600px">
         <input id="new_lab_name" placeholder="New Lab name (e.g., Lab 11)" />
-        <button id="createLabBtn">Create Lab</button>
+        <button id="createLabBtn" class="btn">Create Lab</button>
         <p id="createLabMsg" style="color:red"></p>
       </div>
 
       <div id="labsTableWrap" style="margin-top:15px"></div>
     </section>
+  </div>
+
+  <!-- Weekend Modal -->
+  <div id="weekendModal" class="modal" aria-hidden="true">
+    <div class="modal-content">
+      <h3>Weekend Configuration</h3>
+      <div class="modal-row">
+        <label for="modalTarget">Target</label>
+        <select id="modalTarget">
+          <option value="global">Global Defaults</option>
+          <!-- labs appended dynamically -->
+        </select>
+      </div>
+
+      <div class="modal-row">
+        <label for="satDefault">Saturday - Default blocked text</label>
+        <input id="satDefault" placeholder="e.g. Holiday / Workshop" />
+      </div>
+
+      <div class="modal-row">
+        <label for="satOverride">Saturday - Override (follow weekday)</label>
+        <select id="satOverride">
+          <option value="">(no override)</option>
+          <option>Monday</option><option>Tuesday</option><option>Wednesday</option><option>Thursday</option><option>Friday</option>
+        </select>
+      </div>
+
+      <hr/>
+
+      <div class="modal-row">
+        <label for="sunDefault">Sunday - Default blocked text</label>
+        <input id="sunDefault" placeholder="e.g. Holiday / Workshop" />
+      </div>
+
+      <div class="modal-row">
+        <label for="sunOverride">Sunday - Override (follow weekday)</label>
+        <select id="sunOverride">
+          <option value="">(no override)</option>
+          <option>Monday</option><option>Tuesday</option><option>Wednesday</option><option>Thursday</option><option>Friday</option>
+        </select>
+      </div>
+
+      <div class="modal-actions">
+        <button id="modalSave" class="btn">Save</button>
+        <button id="modalCancel" class="btn btn-secondary">Cancel</button>
+      </div>
+    </div>
   </div>
 
   <script src="script.js"></script>
