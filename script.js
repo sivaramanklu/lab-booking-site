@@ -1,6 +1,15 @@
 // ===== Shared =====
 const user = JSON.parse(localStorage.getItem("user"));
 
+// helper to format YYYY-MM-DD -> 07-Aug-2025
+function formatDate(isoStr) {
+  if (!isoStr) return '';
+  const d = new Date(isoStr + 'T00:00:00'); // ensure timezone parsing safe
+  const dd = String(d.getDate()).padStart(2, '0');
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return `${dd}-${months[d.getMonth()]}-${d.getFullYear()}`;
+}
+
 // ===== Login Page Logic =====
 const loginForm = document.getElementById("loginForm");
 if (loginForm) {
@@ -31,6 +40,16 @@ const labSelect = document.getElementById("labSelect");
 const timetableDiv = document.getElementById("timetable");
 
 if (labSelect && timetableDiv && user) {
+  // add admin link if admin
+  if (user.is_admin) {
+    const anc = document.createElement('a');
+    anc.href = "admin.html";
+    anc.textContent = "Admin: Manage Faculties";
+    anc.style.display = "inline-block";
+    anc.style.margin = "8px";
+    document.querySelector('.container').insertBefore(anc, document.querySelector('.container').firstChild.nextSibling);
+  }
+
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
   const periods = [
     "09:00-09:50", "10:00-10:50", "11:00-11:50", "12:00-12:50",
@@ -57,12 +76,19 @@ if (labSelect && timetableDiv && user) {
   }
 
   function generateTable(slots) {
-    let html = `<table border="1"><tr><th>Day</th>`;
+    // find one slot per day to read the date for that day
+    const dateByDay = {};
+    for (const s of slots) {
+      if (!dateByDay[s.day]) dateByDay[s.day] = s.date;
+    }
+
+    let html = `<table border="1"><tr><th>Day<br/>Date</th>`;
     periods.forEach(p => html += `<th>${p}</th>`);
     html += `</tr>`;
 
     days.forEach(day => {
-      html += `<tr><td>${day}</td>`;
+      const dayDateIso = dateByDay[day] || '';
+      html += `<tr><td><strong>${day}</strong><br/><small>${formatDate(dayDateIso)}</small></td>`;
       for (let period = 1; period <= 8; period++) {
         const slot = slots.find(s => s.day === day && s.period === period);
         if (!slot) {
@@ -74,13 +100,13 @@ if (labSelect && timetableDiv && user) {
         let color = "#eee";
 
         if (slot.status === "Regular") {
-          cellText = `Regular<br>${slot.class_info || ""}`;
+          cellText = `Regular<br/>${slot.class_info || ""}`;
           color = "#dddddd";
         } else if (slot.status === "Booked") {
           const isAdminBooking = slot.faculty_name?.toLowerCase() === "admin";
           cellText = isAdminBooking
             ? "Booked"
-            : `Booked by ${slot.faculty_name}<br>(${slot.class_info || "N/A"})`;
+            : `Booked by ${slot.faculty_name}<br/>(${slot.class_info || "N/A"})`;
           color = "#ffdddd";
         } else {
           cellText = "Free";
@@ -88,13 +114,16 @@ if (labSelect && timetableDiv && user) {
         }
 
         const canClick = (slot.status === "Free") ||
-          (slot.status === "Booked" && (slot.faculty_id === user.user_id || user.is_admin));
+          (slot.status === "Booked" && (String(slot.faculty_id) === String(user.user_id) || user.is_admin));
 
         const canRightClick = user.is_admin && slot.status !== "Booked";
 
+        // pass date to handlers
+        const dateParam = slot.date ? slot.date : '';
+
         html += `<td 
           style="background:${color};cursor:${canClick ? 'pointer' : 'default'}"
-          onclick="${canClick ? `handleClick(${slot.id}, '${slot.status}')` : ''}"
+          onclick="${canClick ? `handleClick(${slot.id}, '${slot.status}', '${dateParam}')` : ''}"
           oncontextmenu="${canRightClick ? `handleRightClick(event, ${slot.id}, '${slot.status}')` : ''}">
           ${cellText}
         </td>`;
@@ -108,9 +137,14 @@ if (labSelect && timetableDiv && user) {
 }
 
 // ===== Booking & Release Handler =====
-async function handleClick(slotId, status) {
+async function handleClick(slotId, status, dateIso) {
   const user = JSON.parse(localStorage.getItem("user"));
   if (!user) return;
+
+  if (!dateIso) {
+    alert("Date not available for this slot.");
+    return;
+  }
 
   if (status === "Free") {
     const classInfo = prompt("Enter class info (e.g., 2nd Year A):");
@@ -120,6 +154,7 @@ async function handleClick(slotId, status) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         id: slotId,
+        date: dateIso,
         faculty_id: user.user_id,
         class_info: classInfo
       })
@@ -128,15 +163,16 @@ async function handleClick(slotId, status) {
     if (result.success) {
       document.getElementById("labSelect") && loadTimetable(document.getElementById("labSelect").value);
     } else {
-      alert(result.message);
+      alert(result.message || "Booking failed");
     }
-  } else {
+  } else if (status === "Booked") {
     if (!confirm("Release this booking?")) return;
     const res = await fetch("http://127.0.0.1:5000/api/release", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         id: slotId,
+        date: dateIso,
         faculty_id: user.user_id,
         is_admin: user.is_admin
       })
@@ -145,12 +181,12 @@ async function handleClick(slotId, status) {
     if (result.success) {
       document.getElementById("labSelect") && loadTimetable(document.getElementById("labSelect").value);
     } else {
-      alert(result.message);
+      alert(result.message || "Release failed");
     }
   }
 }
 
-// Admin Right-Click: Toggle Free ↔ Regular and enter description
+// ===== Admin Right-Click Handler =====
 async function handleRightClick(e, slotId, currentStatus) {
   e.preventDefault(); // prevent browser context menu
 
@@ -158,7 +194,7 @@ async function handleRightClick(e, slotId, currentStatus) {
   let classInfo = null;
 
   if (targetStatus === "Regular") {
-    classInfo = prompt("Enter reason/class info for regular slot (e.g., II-Sec-E):");
+    classInfo = prompt("Enter description for this regular block (e.g., II-Sec-E):");
     if (!classInfo) return; // cancel if empty
   }
 
@@ -180,7 +216,131 @@ async function handleRightClick(e, slotId, currentStatus) {
   }
 }
 
-// ===== Logout Button =====
+// ===== Admin Page Logic (admin.html) =====
+if (document.body && document.body.innerHTML.includes('Admin — Faculty Management') && user) {
+  // redirect non-admins
+  if (!user.is_admin) {
+    alert("Access denied. Admins only.");
+    window.location.href = "index.html";
+  }
+
+  const backBtn = document.getElementById("backBtn");
+  if (backBtn) {
+    backBtn.addEventListener("click", () => window.location.href = "dashboard.html");
+  }
+
+  // create user
+  const createBtn = document.getElementById("createUserBtn");
+  if (createBtn) {
+    createBtn.addEventListener("click", async () => {
+      const name = document.getElementById("new_name").value.trim();
+      const faculty_id = document.getElementById("new_faculty_id").value.trim();
+      const password = document.getElementById("new_password").value;
+      const is_admin = document.getElementById("new_is_admin").checked;
+
+      const msgEl = document.getElementById("createMsg");
+      msgEl.textContent = '';
+
+      if (!name || !faculty_id || !password) {
+        msgEl.textContent = "Name, Faculty ID and Password are required.";
+        return;
+      }
+
+      const res = await fetch("http://127.0.0.1:5000/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requester_faculty_id: user.faculty_id,
+          name, faculty_id, password, is_admin
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        // clear fields
+        document.getElementById("new_name").value = '';
+        document.getElementById("new_faculty_id").value = '';
+        document.getElementById("new_password").value = '';
+        document.getElementById("new_is_admin").checked = false;
+        loadUsers();
+      } else {
+        msgEl.textContent = data.message || "Failed to create user";
+      }
+    });
+  }
+
+  // load users
+  async function loadUsers() {
+    const wrap = document.getElementById("usersTableWrap");
+    wrap.innerHTML = "Loading...";
+    const res = await fetch(`http://127.0.0.1:5000/api/users?requester=${user.faculty_id}`);
+    if (!res.ok) {
+      wrap.innerHTML = "Failed to fetch users.";
+      return;
+    }
+    const users = await res.json();
+    let html = `<table style="width:100%;border-collapse:collapse">
+      <tr style="background:#eee"><th>Name</th><th>Faculty ID</th><th>Is Admin</th><th>Actions</th></tr>`;
+    users.forEach(u => {
+      html += `<tr>
+        <td>${u.name}</td>
+        <td>${u.faculty_id}</td>
+        <td>${u.is_admin ? 'Yes' : 'No'}</td>
+        <td>
+          <button onclick="editUser(${u.id}, '${escape(u.name)}', '${u.faculty_id}', ${u.is_admin})">Edit</button>
+          <button onclick="deleteUser(${u.id}, '${u.faculty_id}')">Delete</button>
+        </td>
+      </tr>`;
+    });
+    html += `</table>`;
+    wrap.innerHTML = html;
+  }
+
+  // expose edit and delete to global scope so inline onclick can call them
+  window.editUser = async function (id, nameEscaped, facultyId, isAdminFlag) {
+    // unescape name
+    const name = unescape(nameEscaped);
+    const newName = prompt("New name:", name) || name;
+    const newPassword = prompt("New password (leave empty to keep unchanged):", "");
+    const newIsAdmin = confirm("Make this user an admin? OK = Yes, Cancel = No");
+
+    const res = await fetch(`http://127.0.0.1:5000/api/users/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        requester_faculty_id: user.faculty_id,
+        name: newName,
+        password: newPassword,
+        is_admin: newIsAdmin
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      loadUsers();
+    } else {
+      alert(data.message || "Update failed");
+    }
+  };
+
+  window.deleteUser = async function (id, facultyId) {
+    if (!confirm(`Delete faculty ${facultyId}?`)) return;
+    const res = await fetch(`http://127.0.0.1:5000/api/users/${id}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requester_faculty_id: user.faculty_id })
+    });
+    const data = await res.json();
+    if (data.success) {
+      loadUsers();
+    } else {
+      alert(data.message || "Delete failed");
+    }
+  };
+
+  // initial load
+  loadUsers();
+}
+
+// ===== Logout Button (works on all pages) =====
 document.addEventListener("DOMContentLoaded", () => {
   const logoutBtn = document.getElementById("logoutBtn");
   if (logoutBtn) {
