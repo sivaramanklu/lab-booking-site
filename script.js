@@ -127,7 +127,7 @@ if (labSelect && timetableDiv && user) {
         let color = "#eee";
 
         if (slot.status === "Regular") {
-          cellText = `Regular<br/>${slot.class_info || ""}`;
+          cellText = `${slot.class_info || ""}`;
           color = "#dddddd";
         } else if (slot.status === "Booked") {
           // show faculty name and class info when available
