@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Admin — Manage Faculties</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <h2>Admin — Faculty Management</h2>
+      <div>
+        <button id="backBtn">Back</button>
+        <button id="logoutBtn">Logout</button>
+      </div>
+    </div>
+
+    <section style="margin-top:20px">
+      <h3>Create New Faculty</h3>
+      <div style="max-width:600px">
+        <input id="new_name" placeholder="Name" />
+        <input id="new_faculty_id" placeholder="Faculty ID (e.g. f123)" />
+        <input id="new_password" placeholder="Password" />
+        <label><input type="checkbox" id="new_is_admin" /> Is Admin</label>
+        <button id="createUserBtn">Create</button>
+        <p id="createMsg" style="color:red"></p>
+      </div>
+    </section>
+
+    <section style="margin-top:30px">
+      <h3>Existing Faculties</h3>
+      <div id="usersTableWrap"></div>
+    </section>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
