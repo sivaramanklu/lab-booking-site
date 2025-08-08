@@ -42,6 +42,7 @@ h1, h2, h3 { margin-top: 0; color: #1f2937; }
   display: inline-flex;
   gap: 8px;
   align-items: center;
+  font-weight: 600;
 }
 .btn-logout::after {
   content: "⎋"; font-size: 12px; opacity: 0.9;
@@ -56,47 +57,44 @@ input, select {
   width: 100%;
 }
 
-/* Table */
-table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 14px; }
-th, td { padding: 10px; border: 1px solid #e6e9ef; text-align: center; min-width: 110px; }
-th { background: #f8fafc; }
+/* Clean table look with stronger separators */
+.timetable-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+  font-size: 14px;
+  table-layout: fixed;
+}
 
-/* Status color tokens (cells have inline background too) */
-td.booked { background: #fff1f2; color: #7f1d1d; font-weight: 600; }
-td.regular { background: #f3f4f6; color: #111827; font-style: italic; }
+/* Thicker, higher-contrast borders */
+.timetable-table th,
+.timetable-table td {
+  padding: 10px;
+  text-align: center;
+  border: 2px solid #cbd5e1; /* stronger separators */
+  min-width: 110px;
+  word-break: break-word;
+  vertical-align: middle;
+}
+
+/* header style */
+.timetable-table th {
+  background: #f1f5f9;
+  color: #0f172a;
+  font-weight: 700;
+  border-bottom-width: 3px;
+}
+
+/* cell status classes */
+td.booked { background: #fff1f2; color: #7f1d1d; font-weight: 700; }
+td.regular { background: #f8fafc; color: #0f172a; font-style: italic; }
 td.free { background: #ecfdf5; color: #065f46; font-weight: 700; }
 
 /* Responsive */
 @media screen and (max-width: 768px) {
   .container { margin: 10px; padding: 14px; }
-  th, td { min-width: 90px; padding: 8px; font-size: 13px; }
+  .timetable-table th, .timetable-table td { min-width: 90px; padding: 8px; font-size: 13px; }
 }
-
-/* Modal */
-.modal {
-  position: fixed;
-  left: 0; top: 0; right: 0; bottom: 0;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  background: rgba(10, 15, 25, 0.45);
-  z-index: 9999;
-}
-.modal[aria-hidden="false"] { display: flex; }
-.modal-content {
-  background: white;
-  width: 480px;
-  max-width: 92%;
-  border-radius: 10px;
-  padding: 20px;
-  box-shadow: 0 12px 30px rgba(10,20,40,0.18);
-}
-.modal-row { margin-bottom: 12px; }
-.modal-row label { display:block; font-weight:600; margin-bottom:6px; color:#374151; }
-.modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:8px; }
-
-/* small helper */
-small { color:#6b7280; }
 
 /* ---------- Login container (separate from the main .container) ---------- */
 .login-container {
@@ -133,3 +131,27 @@ small { color:#6b7280; }
 /* small error message */
 .error-msg { color: #b91c1c; margin-top: 8px; font-size: 0.95rem; }
 
+/* Modal */
+.modal {
+  position: fixed;
+  left: 0; top: 0; right: 0; bottom: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 15, 25, 0.45);
+  z-index: 9999;
+}
+.modal[aria-hidden="false"] { display: flex; }
+.modal-content {
+  background: white;
+  width: 480px;
+  max-width: 92%;
+  border-radius: 10px;
+  padding: 20px;
+  box-shadow: 0 12px 30px rgba(10,20,40,0.18);
+}
+.modal-row { margin-bottom: 12px; }
+.modal-row label { display:block; font-weight:600; margin-bottom:6px; color:#374151; }
+.modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:8px; }
+
+small { color:#6b7280; }
