@@ -56,6 +56,7 @@ const labSelect = document.getElementById("labSelect");
 const timetableDiv = document.getElementById("timetable");
 
 if (labSelect && timetableDiv && user) {
+  // Create Admin link if admin (keeps previous behavior)
   if (user.is_admin) {
     const anc = document.createElement('a');
     anc.href = "admin.html";
@@ -65,6 +66,40 @@ if (labSelect && timetableDiv && user) {
     const container = document.querySelector('.container');
     if (container) container.insertBefore(anc, container.firstChild.nextSibling);
   }
+
+  // Add modern Logout button in header if not present
+  (function ensureLogoutButton() {
+    // prefer existing #logoutBtn; otherwise create one
+    if (!document.getElementById('logoutBtn')) {
+      const header = document.querySelector('.container > div');
+      if (header) {
+        const btn = document.createElement('button');
+        btn.id = 'logoutBtn';
+        btn.className = 'btn-logout';
+        btn.title = 'Logout';
+        btn.textContent = 'Logout';
+        btn.style.marginLeft = '12px';
+        // append to header's right-side container if exists
+        header.appendChild(btn);
+      } else {
+        // fallback insert at top of container
+        const btn = document.createElement('button');
+        btn.id = 'logoutBtn';
+        btn.className = 'btn-logout';
+        btn.title = 'Logout';
+        btn.textContent = 'Logout';
+        document.querySelector('.container').insertBefore(btn, document.querySelector('.container').firstChild);
+      }
+    }
+    // wire logout
+    const lb = document.getElementById('logoutBtn');
+    if (lb) {
+      lb.addEventListener('click', () => {
+        localStorage.clear();
+        window.location.href = "index.html";
+      });
+    }
+  })();
 
   const days = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
   const periods = ["09:00-09:50","10:00-10:50","11:00-11:50","12:00-12:50","01:00-01:50","02:00-02:50","03:00-03:50","04:00-04:50"];
@@ -86,7 +121,7 @@ if (labSelect && timetableDiv && user) {
     const dateByDay = {};
     for (const s of slots) if (!dateByDay[s.day]) dateByDay[s.day] = s.date;
 
-    let html = `<table><tr><th>Day<br/>Date</th>`;
+    let html = `<table class="timetable-table"><tr><th>Day<br/>Date</th>`;
     periods.forEach(p => html += `<th>${p}</th>`);
     html += `</tr>`;
 
@@ -98,27 +133,28 @@ if (labSelect && timetableDiv && user) {
         if (!slot) { html += `<td></td>`; continue; }
 
         let cellText = slot.status;
-        let colorClass = '';
+        let cellClass = '';
+
         if (slot.status === "Regular") {
           cellText = `${slot.class_info || ""}`;
-          colorClass = 'regular';
+          cellClass = 'regular';
         } else if (slot.status === "Booked") {
           if (slot.faculty_name) {
             cellText = `Booked by ${slot.faculty_name}<br/>(${slot.class_info || "N/A"})`;
           } else {
             cellText = `Booked${slot.class_info ? `<br/>(${slot.class_info})` : ''}`;
           }
-          colorClass = 'booked';
+          cellClass = 'booked';
         } else {
           cellText = "Free";
-          colorClass = 'free';
+          cellClass = 'free';
         }
 
         const canClick = (slot.status === "Free") || (slot.status === "Booked" && (String(slot.faculty_id) === String(user.user_id) || user.is_admin));
         const canRightClick = user.is_admin && slot.status !== "Booked";
         const dateParam = slot.date ? slot.date : '';
         const safeStatus = (slot.status || '').replace(/'/g, "\\'");
-        html += `<td class="${colorClass}" style="cursor:${canClick ? 'pointer' : 'default'}"
+        html += `<td class="${cellClass}" style="cursor:${canClick ? 'pointer' : 'default'}"
                     ${canClick ? `onclick="handleClick(${slot.id}, '${safeStatus}', '${dateParam.replace(/'/g,"\\'")}')"` : ''}
                     ${canRightClick ? `oncontextmenu="handleRightClick(event, ${slot.id}, '${safeStatus}')"` : ''}>
                   ${cellText}
@@ -317,6 +353,7 @@ if (window.location.pathname.endsWith('admin.html') || window.location.pathname.
   const modalSave = document.getElementById('modalSave');
   const modalCancel = document.getElementById('modalCancel');
 
+  // expose globally so inline onclick works
   window.openWeekendModal = async function(labId, labNameEscaped) {
     // populate target dropdown with Global + labs
     modalTarget.innerHTML = `<option value="global">Global Defaults</option>`;
@@ -336,7 +373,7 @@ if (window.location.pathname.endsWith('admin.html') || window.location.pathname.
 
     // show modal
     modal.setAttribute('aria-hidden', 'false');
-  }
+  };
 
   async function loadModalValues() {
     const val = modalTarget.value;
@@ -346,7 +383,6 @@ if (window.location.pathname.endsWith('admin.html') || window.location.pathname.
       const cfg = await res.json();
       satDefault.value = cfg.saturday || '';
       sunDefault.value = cfg.sunday || '';
-      // overrides not applicable for global; clear selects
       satOverride.value = '';
       sunOverride.value = '';
     } else {
@@ -363,51 +399,81 @@ if (window.location.pathname.endsWith('admin.html') || window.location.pathname.
   modalTarget.addEventListener('change', loadModalValues);
   modalCancel.addEventListener('click', () => modal.setAttribute('aria-hidden', 'true'));
 
+  // Improved Save handler — handles global & lab targets, with feedback
   modalSave.addEventListener('click', async () => {
-    const target = modalTarget.value;
-    // Save defaults (global or lab)
-    if (target === 'global') {
-      // Saturday
-      await fetch("http://127.0.0.1:5000/api/weekend/default", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ requester_faculty_id: user.faculty_id, lab_id: 'global', day: 'Saturday', custom_text: satDefault.value })
-      });
-      // Sunday
-      await fetch("http://127.0.0.1:5000/api/weekend/default", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ requester_faculty_id: user.faculty_id, lab_id: 'global', day: 'Sunday', custom_text: sunDefault.value })
-      });
-    } else {
-      // lab-specific defaults
-      const lab_id = parseInt(target,10);
-      await fetch("http://127.0.0.1:5000/api/weekend/default", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ requester_faculty_id: user.faculty_id, lab_id, day: 'Saturday', custom_text: satDefault.value })
-      });
-      await fetch("http://127.0.0.1:5000/api/weekend/default", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ requester_faculty_id: user.faculty_id, lab_id, day: 'Sunday', custom_text: sunDefault.value })
-      });
+    modalSave.disabled = true;
+    modalSave.textContent = 'Saving...';
 
-      // overrides for upcoming weekend (set/clear)
-      const satSrc = satOverride.value || null;
-      const sunSrc = sunOverride.value || null;
-      await fetch("http://127.0.0.1:5000/api/weekend/override", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ requester_faculty_id: user.faculty_id, lab_id, day: 'Saturday', source_day: satSrc })
-      });
-      await fetch("http://127.0.0.1:5000/api/weekend/override", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ requester_faculty_id: user.faculty_id, lab_id, day: 'Sunday', source_day: sunSrc })
-      });
+    try {
+      const target = modalTarget.value;
+
+      // Save defaults (global or lab)
+      if (target === 'global') {
+        // Saturday
+        const r1 = await fetch("http://127.0.0.1:5000/api/weekend/default", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ requester_faculty_id: user.faculty_id, lab_id: 'global', day: 'Saturday', custom_text: satDefault.value })
+        });
+        const d1 = await r1.json();
+        if (!r1.ok || !d1.success) throw new Error(d1.message || 'Failed saving Saturday global default');
+
+        // Sunday
+        const r2 = await fetch("http://127.0.0.1:5000/api/weekend/default", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ requester_faculty_id: user.faculty_id, lab_id: 'global', day: 'Sunday', custom_text: sunDefault.value })
+        });
+        const d2 = await r2.json();
+        if (!r2.ok || !d2.success) throw new Error(d2.message || 'Failed saving Sunday global default');
+
+      } else {
+        // lab-specific defaults
+        const lab_id = parseInt(target,10);
+        const rSat = await fetch("http://127.0.0.1:5000/api/weekend/default", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ requester_faculty_id: user.faculty_id, lab_id, day: 'Saturday', custom_text: satDefault.value })
+        });
+        const dSat = await rSat.json();
+        if (!rSat.ok || !dSat.success) throw new Error(dSat.message || 'Failed saving Saturday default');
+
+        const rSun = await fetch("http://127.0.0.1:5000/api/weekend/default", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ requester_faculty_id: user.faculty_id, lab_id, day: 'Sunday', custom_text: sunDefault.value })
+        });
+        const dSun = await rSun.json();
+        if (!rSun.ok || !dSun.success) throw new Error(dSun.message || 'Failed saving Sunday default');
+
+        // overrides for upcoming weekend (set/clear)
+        const satSrc = satOverride.value || null;
+        const sunSrc = sunOverride.value || null;
+
+        const rO1 = await fetch("http://127.0.0.1:5000/api/weekend/override", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ requester_faculty_id: user.faculty_id, lab_id, day: 'Saturday', source_day: satSrc })
+        });
+        const dO1 = await rO1.json();
+        if (!rO1.ok || !dO1.success) throw new Error(dO1.message || 'Failed saving Saturday override');
+
+        const rO2 = await fetch("http://127.0.0.1:5000/api/weekend/override", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ requester_faculty_id: user.faculty_id, lab_id, day: 'Sunday', source_day: sunSrc })
+        });
+        const dO2 = await rO2.json();
+        if (!rO2.ok || !dO2.success) throw new Error(dO2.message || 'Failed saving Sunday override');
+      }
+
+      // reload admin lists and dashboard dropdown
+      loadLabsAdmin();
+      await reloadLabSelectIfPresent();
+
+      modal.setAttribute('aria-hidden', 'true');
+      alert("Saved successfully.");
+    } catch (err) {
+      console.error(err);
+      alert(`Save failed: ${err.message || err}`);
+    } finally {
+      modalSave.disabled = false;
+      modalSave.textContent = 'Save';
     }
-
-    // reload admin lists and dashboard dropdown
-    loadLabsAdmin();
-    await reloadLabSelectIfPresent();
-
-    modal.setAttribute('aria-hidden', 'true');
-    alert("Saved.");
   });
 
 } // end admin page block
