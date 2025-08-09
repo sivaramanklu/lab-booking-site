@@ -1,4 +1,4 @@
-// ===== Full script.js (updated) =====
+// ===== Full script.js =====
 
 // ====== Shared state ======
 const user = JSON.parse(localStorage.getItem("user") || "null");
@@ -22,12 +22,12 @@ const API_BASE = (function(){
 })();
 console.log("API_BASE =", API_BASE);
 
-// ===== safeFetch helper =====
+// ===== safeFetch helper - returns object with ok,status,data,networkError =====
 async function safeFetch(url, opts) {
   try {
     const res = await fetch(url, opts);
     let data = null;
-    try { data = await res.json(); } catch (e) { /* ignore */ }
+    try { data = await res.json(); } catch (e) { /* non-json possible */ }
     return { ok: res.ok, status: res.status, data, res };
   } catch (err) {
     return { ok: false, networkError: true, error: err };
@@ -43,31 +43,39 @@ function formatDate(isoStr) {
   return `${dd}-${months[d.getMonth()]}-${d.getFullYear()}`;
 }
 
-// ========== LOGIN PAGE ==========
+// reload lab dropdown if present
+async function reloadLabSelectIfPresent() {
+  try {
+    const sel = document.getElementById('labSelect');
+    if (!sel) return;
+    const r = await safeFetch(`${API_BASE}/api/labs`);
+    if (r.networkError) {
+      sel.innerHTML = `<option value="">(Cannot reach backend)</option>`;
+      return;
+    }
+    if (!r.ok) {
+      sel.innerHTML = `<option value="">(Failed to load labs)</option>`;
+      return;
+    }
+    const labs = r.data || [];
+    sel.innerHTML = labs.map(l => `<option value="${l.id}">${l.name}</option>`).join('');
+    if (sel.options.length > 0) {
+      const prev = sel.value;
+      if (prev && [...sel.options].some(o=>o.value === prev)) {
+        sel.value = prev;
+      } else {
+        sel.value = sel.options[0].value;
+      }
+      sel.dispatchEvent(new Event('change'));
+    }
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+// ====================== LOGIN ======================
 const loginForm = document.getElementById("loginForm");
 if (loginForm) {
-  // show notification area if exists
-  (async function showLoginNotification() {
-    // If server returned a notification in localStorage user obj (when logged in) that's not helpful here.
-    // Instead call /api/notifications to fetch latest active.
-    const r = await safeFetch(`${API_BASE}/api/notifications`);
-    if (r.ok && Array.isArray(r.data) && r.data.length > 0) {
-      // Find first active
-      const active = r.data.find(n => n.active) || r.data[0];
-      if (active) {
-        const banner = document.createElement('div');
-        banner.id = 'siteNotificationBanner';
-        banner.style.background = '#fffbdd';
-        banner.style.border = '1px solid #f0e6a8';
-        banner.style.padding = '10px';
-        banner.style.marginBottom = '12px';
-        banner.innerHTML = `<strong>${active.title || 'Notice'}</strong><div>${active.message || ''}</div>`;
-        const container = document.querySelector('.container') || document.body;
-        container.insertBefore(banner, container.firstChild);
-      }
-    }
-  })();
-
   loginForm.addEventListener("submit", async function(e){
     e.preventDefault();
     const facultyId = document.getElementById("facultyId").value;
@@ -81,8 +89,10 @@ if (loginForm) {
       document.getElementById("loginMsg").textContent = `Network error — cannot reach backend at ${API_BASE}.`;
       return;
     }
+    // helpful message for static host 405 case
     if (res.status === 405) {
-      document.getElementById("loginMsg").textContent = `Login failed (405): POST not allowed at ${API_BASE}.`;
+      document.getElementById("loginMsg").textContent =
+        `Login failed (405): POST not allowed at ${API_BASE}. If your frontend is hosted separately (GitHub Pages), set window.__API_BASE__ to your backend before loading script.js.`;
       return;
     }
     const data = res.data || {};
@@ -95,7 +105,7 @@ if (loginForm) {
   });
 }
 
-// ========== DASHBOARD ==========
+// ====================== DASHBOARD ======================
 const labSelect = document.getElementById("labSelect");
 const timetableDiv = document.getElementById("timetable");
 
@@ -110,20 +120,7 @@ if (labSelect && timetableDiv) {
     if (container) container.insertBefore(anc, container.firstChild.nextSibling);
   }
 
-  // Add Change Password button
-  (function ensureChangePassword() {
-    if (!document.getElementById('changePassBtn')) {
-      const btn = document.createElement('button');
-      btn.id = 'changePassBtn';
-      btn.textContent = 'Change Password';
-      btn.style.margin = '6px';
-      const container = document.querySelector('.container');
-      if (container) container.insertBefore(btn, container.firstChild);
-      btn.addEventListener('click', openChangePasswordDialog);
-    }
-  })();
-
-  // modern logout button
+  // Ensure modern logout button exists
   (function ensureLogout() {
     if (!document.getElementById('logoutBtn')) {
       const btn = document.createElement('button');
@@ -134,13 +131,18 @@ if (labSelect && timetableDiv) {
       if (container) container.insertBefore(btn, container.firstChild);
     }
     const lb = document.getElementById('logoutBtn');
-    if (lb) lb.addEventListener('click', () => { localStorage.clear(); window.location.href = "index.html"; });
+    if (lb) lb.addEventListener('click', () => {
+      localStorage.clear();
+      window.location.href = "index.html";
+    });
   })();
 
   const days = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
   const periods = ["09:00-09:50","10:00-10:50","11:00-11:50","12:00-12:50","01:00-01:50","02:00-02:50","03:00-03:50","04:00-04:50"];
 
-  labSelect.addEventListener('change', () => { if (labSelect.value) loadTimetable(labSelect.value); });
+  labSelect.addEventListener('change', () => {
+    if (labSelect.value) loadTimetable(labSelect.value);
+  });
 
   (async function initDash(){
     await reloadLabSelectIfPresent();
@@ -163,6 +165,7 @@ if (labSelect && timetableDiv) {
   }
 
   function generateTable(slots) {
+    // map day->date for header
     const dateByDay = {};
     for (const s of slots) if (!dateByDay[s.day]) dateByDay[s.day] = s.date;
 
@@ -175,7 +178,10 @@ if (labSelect && timetableDiv) {
       html += `<tr><td><strong>${day}</strong><br/><small>${formatDate(dayDateIso)}</small></td>`;
       for (let period = 1; period <= 8; period++) {
         const slot = slots.find(s => s.day === day && s.period === period);
-        if (!slot) { html += `<td></td>`; continue; }
+        if (!slot) {
+          html += `<td></td>`;
+          continue;
+        }
 
         let cellText = slot.status;
         let cellClass = '';
@@ -219,7 +225,8 @@ async function handleClick(slotId, status, dateIso) {
     const classInfo = prompt("Enter class info (e.g., 2nd Year A):");
     if (!classInfo) return;
     const r = await safeFetch(`${API_BASE}/api/book`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: slotId, date: dateIso, faculty_id: currentUser.user_id, class_info: classInfo })
     });
     if (r.networkError) { alert(`Network error — cannot reach backend at ${API_BASE}.`); return; }
@@ -231,7 +238,8 @@ async function handleClick(slotId, status, dateIso) {
   } else if (status === "Booked") {
     if (!confirm("Release this booking?")) return;
     const r = await safeFetch(`${API_BASE}/api/release`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: slotId, date: dateIso, faculty_id: currentUser.user_id, is_admin: currentUser.is_admin })
     });
     if (r.networkError) { alert(`Network error — cannot reach backend at ${API_BASE}.`); return; }
@@ -266,176 +274,296 @@ async function handleRightClick(e, slotId, currentStatus) {
     alert((r.data && r.data.message) ? r.data.message : `Failed to update slot (status ${r.status})`);
   }
 }
+
+// Expose handleRightClick & handleClick globally for inline onclick usage
 window.handleClick = handleClick;
 window.handleRightClick = handleRightClick;
 
-// ================ Admin page additions (notifications & cleanup) ================
+// ================= ADMIN PAGE =================
 if (window.location.pathname.endsWith('admin.html') || window.location.pathname.endsWith('/admin.html')) {
   // protect page
-  const userObj = JSON.parse(localStorage.getItem("user") || "null");
-  if (!userObj || !userObj.is_admin) { alert("Access denied. Admins only."); window.location.href = "index.html"; }
+  if (!user || !user.is_admin) { alert("Access denied. Admins only."); window.location.href = "index.html"; }
 
-  // Add notification UI to admin page: (assumes existing admin HTML has a <div id="adminExtras"></div>)
-  const adminExtras = document.getElementById('adminExtras');
-  if (adminExtras) {
-    adminExtras.innerHTML = `
-      <h3>Site Notification</h3>
-      <input id="notifTitle" placeholder="Title" style="width:100%;padding:6px;margin-bottom:6px" />
-      <textarea id="notifMessage" placeholder="Message" style="width:100%;height:90px;"></textarea>
-      <label><input id="notifActive" type="checkbox" checked /> Active (show on login)</label>
-      <div style="margin-top:8px;">
-        <button id="postNotifBtn">Post Notification</button>
-        <button id="clearNotifBtn" style="margin-left:8px;">Clear Active</button>
-        <button id="cleanupBtn" style="margin-left:20px;background:#f44336;color:white;">Run Cleanup (delete past bookings)</button>
-      </div>
-      <div id="adminNotifMsg" style="margin-top:8px;color:#006400;"></div>
-      <hr/>
-      <div id="notifListWrap"></div>
-    `;
-    document.getElementById('postNotifBtn').addEventListener('click', async () => {
-      const title = document.getElementById('notifTitle').value.trim();
-      const message = document.getElementById('notifMessage').value.trim();
-      const active = document.getElementById('notifActive').checked;
-      const r = await safeFetch(`${API_BASE}/api/notifications`, {
+  // Back & Logout wiring (if present)
+  const backBtn = document.getElementById("backBtn");
+  if (backBtn) backBtn.addEventListener("click", () => window.location.href = "dashboard.html");
+  const logoutBtn = document.getElementById("logoutBtn");
+  if (logoutBtn) logoutBtn.addEventListener("click", () => { localStorage.clear(); window.location.href = "index.html"; });
+
+  // ----- Users -----
+  const createBtn = document.getElementById("createUserBtn");
+  if (createBtn) {
+    createBtn.addEventListener("click", async () => {
+      const name = document.getElementById("new_name").value.trim();
+      const faculty_id = document.getElementById("new_faculty_id").value.trim();
+      const password = document.getElementById("new_password").value;
+      const is_admin = document.getElementById("new_is_admin").checked;
+      const msgEl = document.getElementById("createMsg");
+      msgEl.textContent = '';
+      if (!name || !faculty_id || !password) { msgEl.textContent = "Name, Faculty ID and Password are required."; return; }
+      const r = await safeFetch(`${API_BASE}/api/users`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ requester_faculty_id: userObj.faculty_id, title, message, active })
+        body: JSON.stringify({ requester_faculty_id: user.faculty_id, name, faculty_id, password, is_admin })
       });
-      if (r.networkError) { document.getElementById('adminNotifMsg').textContent = `Network error`; return; }
+      if (r.networkError) { msgEl.textContent = `Network error - can't reach ${API_BASE}`; return; }
       if (r.ok && r.data && r.data.success) {
-        document.getElementById('adminNotifMsg').textContent = 'Posted.';
-        loadNotifList();
+        document.getElementById("new_name").value = '';
+        document.getElementById("new_faculty_id").value = '';
+        document.getElementById("new_password").value = '';
+        document.getElementById("new_is_admin").checked = false;
+        loadUsers();
       } else {
-        document.getElementById('adminNotifMsg').textContent = (r.data && r.data.message) ? r.data.message : 'Failed';
+        msgEl.textContent = (r.data && r.data.message) ? r.data.message : `Failed to create user (status ${r.status})`;
       }
     });
-    document.getElementById('clearNotifBtn').addEventListener('click', async () => {
-      // Clear active by posting an inactive empty notification; or delete all active notifications
-      const r = await safeFetch(`${API_BASE}/api/notifications`, {});
-      if (r.ok) {
-        // deactivate by creating an inactive empty notification (keeps history)
-        const r2 = await safeFetch(`${API_BASE}/api/notifications`, {
+  }
+
+  async function loadUsers() {
+    const wrap = document.getElementById("usersTableWrap");
+    if (!wrap) return;
+    wrap.innerHTML = "Loading...";
+    const r = await safeFetch(`${API_BASE}/api/users?requester=${user.faculty_id}`);
+    if (r.networkError) { wrap.innerHTML = `Cannot reach backend at ${API_BASE}`; return; }
+    if (!r.ok) { wrap.innerHTML = `Failed to fetch users (status ${r.status})`; return; }
+    const users = r.data || [];
+    let html = `<table style="width:100%;border-collapse:collapse"><tr style="background:#f1f5f9"><th>Name</th><th>Faculty ID</th><th>Is Admin</th><th>Actions</th></tr>`;
+    users.forEach(u => {
+      html += `<tr><td>${u.name}</td><td>${u.faculty_id}</td><td>${u.is_admin ? 'Yes' : 'No'}</td><td>
+        <button onclick="editUser(${u.id}, '${escape(u.name)}', '${u.faculty_id}', ${u.is_admin})">Edit</button>
+        <button onclick="deleteUser(${u.id}, '${u.faculty_id}')">Delete</button>
+      </td></tr>`;
+    });
+    html += `</table>`;
+    wrap.innerHTML = html;
+  }
+
+  window.editUser = async function(id, nameEscaped, facultyId, isAdminFlag) {
+    const name = unescape(nameEscaped);
+    const newName = prompt("New name:", name) || name;
+    const newPassword = prompt("New password (leave empty to keep unchanged):", "");
+    const newIsAdmin = confirm("Make this user an admin? OK = Yes, Cancel = No");
+    const r = await safeFetch(`${API_BASE}/api/users/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requester_faculty_id: user.faculty_id, name: newName, password: newPassword, is_admin: newIsAdmin })
+    });
+    if (r.networkError) { alert(`Network error — cannot reach backend at ${API_BASE}`); return; }
+    if (r.ok && r.data && r.data.success) loadUsers();
+    else alert((r.data && r.data.message) ? r.data.message : `Update failed (status ${r.status})`);
+  };
+
+  window.deleteUser = async function(id, facultyId) {
+    if (!confirm(`Delete faculty ${facultyId}?`)) return;
+    const r = await safeFetch(`${API_BASE}/api/users/${id}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requester_faculty_id: user.faculty_id })
+    });
+    if (r.networkError) { alert(`Network error — cannot reach backend at ${API_BASE}`); return; }
+    if (r.ok && r.data && r.data.success) loadUsers();
+    else alert((r.data && r.data.message) ? r.data.message : `Delete failed (status ${r.status})`);
+  };
+
+  // ----- Labs management -----
+  const createLabBtn = document.getElementById("createLabBtn");
+  if (createLabBtn) createLabBtn.addEventListener("click", async () => {
+    const name = document.getElementById("new_lab_name").value.trim();
+    const msgEl = document.getElementById("createLabMsg");
+    msgEl.textContent = '';
+    if (!name) { msgEl.textContent = "Lab name required"; return; }
+    const r = await safeFetch(`${API_BASE}/api/labs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requester_faculty_id: user.faculty_id, name })
+    });
+    if (r.networkError) { msgEl.textContent = `Network error - can't reach ${API_BASE}`; return; }
+    if (r.ok && r.data && r.data.success) { document.getElementById("new_lab_name").value=''; loadLabsAdmin(); await reloadLabSelectIfPresent(); }
+    else msgEl.textContent = (r.data && r.data.message) ? r.data.message : `Failed to create lab (status ${r.status})`;
+  });
+
+  async function loadLabsAdmin() {
+    const wrap = document.getElementById("labsTableWrap");
+    if (!wrap) return;
+    wrap.innerHTML = "Loading...";
+    const r = await safeFetch(`${API_BASE}/api/labs`);
+    if (r.networkError) { wrap.innerHTML = `Cannot reach backend at ${API_BASE}`; return; }
+    if (!r.ok) { wrap.innerHTML = `Failed to fetch labs (status ${r.status})`; return; }
+    const labs = r.data || [];
+    let html = `<table style="width:100%;border-collapse:collapse"><tr style="background:#f1f5f9"><th>Lab Name</th><th>Actions</th></tr>`;
+    labs.forEach(l => {
+      html += `<tr><td>${l.name}</td><td>
+        <button onclick="editLab(${l.id}, '${escape(l.name)}')">Edit</button>
+        <button onclick="deleteLab(${l.id})">Delete</button>
+        <button onclick="openWeekendModal(${l.id}, '${escape(l.name)}')">Weekend</button>
+      </td></tr>`;
+    });
+    html += `</table>`;
+    wrap.innerHTML = html;
+  }
+
+  window.editLab = async function(id, nameEscaped) {
+    const current = unescape(nameEscaped);
+    const newName = prompt("New lab name:", current);
+    if (!newName) return;
+    const r = await safeFetch(`${API_BASE}/api/labs/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requester_faculty_id: user.faculty_id, name: newName })
+    });
+    if (r.networkError) { alert(`Network error — cannot reach backend at ${API_BASE}`); return; }
+    if (r.ok && r.data && r.data.success) { loadLabsAdmin(); await reloadLabSelectIfPresent(); }
+    else alert((r.data && r.data.message) ? r.data.message : `Failed to update lab (status ${r.status})`);
+  };
+
+  window.deleteLab = async function(id) {
+    if (!confirm("Delete this lab? This will remove its timetable and future bookings.")) return;
+    const r = await safeFetch(`${API_BASE}/api/labs/${id}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requester_faculty_id: user.faculty_id })
+    });
+    if (r.networkError) { alert(`Network error — cannot reach backend at ${API_BASE}`); return; }
+    if (r.ok && r.data && r.data.success) { loadLabsAdmin(); await reloadLabSelectIfPresent(); }
+    else alert((r.data && r.data.message) ? r.data.message : `Failed to delete lab (status ${r.status})`);
+  };
+
+  // initial loads
+  loadUsers();
+  loadLabsAdmin();
+
+  // -------- Weekend modal logic (global defaults + per-lab) --------
+  const modal = document.getElementById('weekendModal');
+  const modalTarget = document.getElementById('modalTarget');
+  const satDefault = document.getElementById('satDefault');
+  const sunDefault = document.getElementById('sunDefault');
+  const satOverride = document.getElementById('satOverride');
+  const sunOverride = document.getElementById('sunOverride');
+  const modalSave = document.getElementById('modalSave');
+  const modalCancel = document.getElementById('modalCancel');
+
+  // expose so inline onclick works
+  window.openWeekendModal = async function(labId, labNameEscaped) {
+    // populate target dropdown: Global + labs
+    modalTarget.innerHTML = `<option value="global">Global Defaults</option>`;
+    const rLabs = await safeFetch(`${API_BASE}/api/labs`);
+    if (!rLabs.ok) { alert(`Cannot load labs from backend at ${API_BASE}`); return; }
+    const labs = rLabs.data || [];
+    labs.forEach(l => {
+      const opt = document.createElement('option');
+      opt.value = String(l.id);
+      opt.text = l.name;
+      modalTarget.appendChild(opt);
+    });
+    modalTarget.value = String(labId);
+    await loadModalValues();
+    modal.setAttribute('aria-hidden', 'false');
+  };
+
+  async function loadModalValues() {
+    const val = modalTarget.value;
+    if (val === 'global') {
+      const r = await safeFetch(`${API_BASE}/api/weekend/global`);
+      if (r.networkError) { alert(`Cannot reach backend at ${API_BASE}`); return; }
+      if (!r.ok) { alert(`Failed to fetch global weekend settings (status ${r.status})`); return; }
+      const cfg = r.data || {};
+      satDefault.value = cfg.saturday || '';
+      sunDefault.value = cfg.sunday || '';
+      satOverride.value = '';
+      sunOverride.value = '';
+    } else {
+      const r = await safeFetch(`${API_BASE}/api/weekend/${val}`);
+      if (r.networkError) { alert(`Cannot reach backend at ${API_BASE}`); return; }
+      if (!r.ok) { alert(`Failed to fetch lab weekend settings (status ${r.status})`); return; }
+      const cfg = r.data || {};
+      satDefault.value = (cfg.saturday && cfg.saturday.default_text) ? cfg.saturday.default_text : '';
+      sunDefault.value = (cfg.sunday && cfg.sunday.default_text) ? cfg.sunday.default_text : '';
+      satOverride.value = (cfg.saturday && cfg.saturday.override && cfg.saturday.override.exists) ? (cfg.saturday.override.source_day || '') : '';
+      sunOverride.value = (cfg.sunday && cfg.sunday.override && cfg.sunday.override.exists) ? (cfg.sunday.override.source_day || '') : '';
+    }
+  }
+
+  modalTarget.addEventListener('change', loadModalValues);
+  if (modalCancel) modalCancel.addEventListener('click', () => modal.setAttribute('aria-hidden', 'true'));
+
+  if (modalSave) modalSave.addEventListener('click', async () => {
+    modalSave.disabled = true;
+    modalSave.textContent = 'Saving...';
+    try {
+      const target = modalTarget.value;
+      // handle global via /api/weekend/default with lab_id:'global'
+      if (target === 'global') {
+        // Saturday
+        const r1 = await safeFetch(`${API_BASE}/api/weekend/default`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ requester_faculty_id: userObj.faculty_id, title: '', message: '', active: false })
+          body: JSON.stringify({ requester_faculty_id: user.faculty_id, lab_id: 'global', day: 'Saturday', custom_text: satDefault.value })
         });
-        if (r2.ok && r2.data && r2.data.success) { document.getElementById('adminNotifMsg').textContent = 'Cleared active notification.'; loadNotifList(); }
-      } else document.getElementById('adminNotifMsg').textContent = 'Failed to clear';
-    });
+        if (r1.networkError) throw new Error(`Network error — cannot reach ${API_BASE}`);
+        if (!r1.ok || !r1.data || !r1.data.success) throw new Error(r1.data && r1.data.message ? r1.data.message : `Failed to save Saturday (status ${r1.status})`);
+        // Sunday
+        const r2 = await safeFetch(`${API_BASE}/api/weekend/default`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ requester_faculty_id: user.faculty_id, lab_id: 'global', day: 'Sunday', custom_text: sunDefault.value })
+        });
+        if (r2.networkError) throw new Error(`Network error — cannot reach ${API_BASE}`);
+        if (!r2.ok || !r2.data || !r2.data.success) throw new Error(r2.data && r2.data.message ? r2.data.message : `Failed to save Sunday (status ${r2.status})`);
+      } else {
+        const lab_id = parseInt(target, 10);
+        // save lab defaults
+        const rSat = await safeFetch(`${API_BASE}/api/weekend/default`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ requester_faculty_id: user.faculty_id, lab_id, day: 'Saturday', custom_text: satDefault.value })
+        });
+        if (rSat.networkError) throw new Error(`Network error — cannot reach ${API_BASE}`);
+        if (!rSat.ok || !rSat.data || !rSat.data.success) throw new Error(rSat.data && rSat.data.message ? rSat.data.message : `Failed to save Saturday default (status ${rSat.status})`);
+        const rSun = await safeFetch(`${API_BASE}/api/weekend/default`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ requester_faculty_id: user.faculty_id, lab_id, day: 'Sunday', custom_text: sunDefault.value })
+        });
+        if (rSun.networkError) throw new Error(`Network error — cannot reach ${API_BASE}`);
+        if (!rSun.ok || !rSun.data || !rSun.data.success) throw new Error(rSun.data && rSun.data.message ? rSun.data.message : `Failed to save Sunday default (status ${rSun.status})`);
 
-    document.getElementById('cleanupBtn').addEventListener('click', async () => {
-      if (!confirm('Delete all bookings older than today?')) return;
-      const r = await safeFetch(`${API_BASE}/api/cleanup_bookings`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ requester_faculty_id: userObj.faculty_id })
-      });
-      if (r.networkError) alert('Network error during cleanup');
-      else if (r.ok && r.data && r.data.success) alert(`Deleted ${r.data.deleted} old bookings`);
-      else alert('Cleanup failed: ' + (r.data && r.data.message));
-    });
+        // overrides
+        const satSrc = satOverride.value || null;
+        const rO1 = await safeFetch(`${API_BASE}/api/weekend/override`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ requester_faculty_id: user.faculty_id, lab_id, day: 'Saturday', source_day: satSrc })
+        });
+        if (rO1.networkError) throw new Error(`Network error — cannot reach ${API_BASE}`);
+        if (!rO1.ok || !rO1.data || !rO1.data.success) throw new Error(rO1.data && rO1.data.message ? rO1.data.message : `Failed to save Saturday override (status ${rO1.status})`);
 
-    async function loadNotifList() {
-      const wrap = document.getElementById('notifListWrap');
-      const r = await safeFetch(`${API_BASE}/api/notifications`);
-      if (!r.ok || r.networkError) { wrap.innerHTML = 'Failed to load'; return; }
-      const list = r.data || [];
-      let html = '<h4>Recent Notifications</h4><ul>';
-      for (const n of list) {
-        html += `<li><strong>${n.title || '(no title)'}</strong> - ${n.created_at ? new Date(n.created_at).toLocaleString() : ''} ${n.active ? '<em>(active)</em>' : ''} 
-          <button onclick="deleteNotif(${n.id})" style="margin-left:8px">Delete</button></li>`;
+        const sunSrc = sunOverride.value || null;
+        const rO2 = await safeFetch(`${API_BASE}/api/weekend/override`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ requester_faculty_id: user.faculty_id, lab_id, day: 'Sunday', source_day: sunSrc })
+        });
+        if (rO2.networkError) throw new Error(`Network error — cannot reach ${API_BASE}`);
+        if (!rO2.ok || !rO2.data || !rO2.data.success) throw new Error(rO2.data && rO2.data.message ? rO2.data.message : `Failed to save Sunday override (status ${rO2.status})`);
       }
-      html += '</ul>';
-      wrap.innerHTML = html;
-    }
-    window.deleteNotif = async function(id) {
-      if (!confirm('Delete notification?')) return;
-      const r = await safeFetch(`${API_BASE}/api/notifications/${id}`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ requester_faculty_id: userObj.faculty_id })
-      });
-      if (r.ok && r.data && r.data.success) loadNotifList();
-      else alert('Failed to delete');
-    };
-    loadNotifList();
-  }
-}
 
-// ================ Change Password (dashboard) ================
-function openChangePasswordDialog() {
-  const dlgHtml = `
-    <div id="changePassModal" style="position:fixed;left:0;top:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.4);">
-      <div style="background:white;padding:20px;border-radius:8px;max-width:420px;width:92%;">
-        <h3>Change Password</h3>
-        <input id="cp_old" type="password" placeholder="Old password" style="width:100%;padding:8px;margin:8px 0;" />
-        <input id="cp_new" type="password" placeholder="New password" style="width:100%;padding:8px;margin:8px 0;" />
-        <input id="cp_new2" type="password" placeholder="Confirm new password" style="width:100%;padding:8px;margin:8px 0;" />
-        <div style="text-align:right;">
-          <button id="cp_cancel">Cancel</button>
-          <button id="cp_save" style="margin-left:8px;">Save</button>
-        </div>
-        <div id="cp_msg" style="margin-top:8px;color:#b91c1c;"></div>
-      </div>
-    </div>
-  `;
-  const tmp = document.createElement('div');
-  tmp.innerHTML = dlgHtml;
-  document.body.appendChild(tmp.firstChild);
-  document.getElementById('cp_cancel').addEventListener('click', () => document.getElementById('changePassModal').remove());
-  document.getElementById('cp_save').addEventListener('click', async () => {
-    const oldp = document.getElementById('cp_old').value;
-    const newp = document.getElementById('cp_new').value;
-    const newp2 = document.getElementById('cp_new2').value;
-    if (!oldp || !newp) { document.getElementById('cp_msg').textContent = 'Fill both fields'; return; }
-    if (newp !== newp2) { document.getElementById('cp_msg').textContent = 'New passwords do not match'; return; }
-    const curUser = JSON.parse(localStorage.getItem('user') || 'null');
-    if (!curUser) { document.getElementById('cp_msg').textContent = 'Not logged in'; return; }
-    const r = await safeFetch(`${API_BASE}/api/change_password`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ faculty_id: curUser.faculty_id, old_password: oldp, new_password: newp })
-    });
-    if (r.networkError) { document.getElementById('cp_msg').textContent = 'Network error'; return; }
-    if (r.ok && r.data && r.data.success) {
-      alert('Password changed. Please login again.');
-      localStorage.clear();
-      window.location.href = 'index.html';
-    } else {
-      document.getElementById('cp_msg').textContent = (r.data && r.data.message) ? r.data.message : 'Failed';
+      // refresh UI
+      loadLabsAdmin();
+      await reloadLabSelectIfPresent();
+      modal.setAttribute('aria-hidden', 'true');
+      alert("Saved successfully.");
+    } catch (err) {
+      console.error(err);
+      alert(`Save failed: ${err.message || err}`);
+    } finally {
+      modalSave.disabled = false;
+      modalSave.textContent = 'Save';
     }
   });
-}
 
-// ================ Helpers used in multiple places ================
-async function reloadLabSelectIfPresent() {
-  try {
-    const sel = document.getElementById('labSelect');
-    if (!sel) return;
-    const r = await safeFetch(`${API_BASE}/api/labs`);
-    if (r.networkError) {
-      sel.innerHTML = `<option value="">(Cannot reach backend)</option>`;
-      return;
-    }
-    if (!r.ok) {
-      sel.innerHTML = `<option value="">(Failed to load labs)</option>`;
-      return;
-    }
-    const labs = r.data || [];
-    sel.innerHTML = labs.map(l => `<option value="${l.id}">${l.name}</option>`).join('');
-    if (sel.options.length > 0) {
-      const prev = sel.value;
-      if (prev && [...sel.options].some(o=>o.value === prev)) {
-        sel.value = prev;
-      } else {
-        sel.value = sel.options[0].value;
-      }
-      sel.dispatchEvent(new Event('change'));
-    }
-  } catch (e) { console.error(e); }
-}
+} // end admin page block
 
-// global logout wiring
+// global logout wiring (for any pages)
 document.addEventListener("DOMContentLoaded", () => {
   const logoutBtns = document.querySelectorAll("#logoutBtn");
   logoutBtns.forEach(btn => btn.addEventListener("click", () => {
