@@ -244,7 +244,13 @@ async function handleClick(slotId, status, dateIso) {
     });
     if (r.networkError) { alert(`Network error — cannot reach backend at ${API_BASE}.`); return; }
     if (r.ok && r.data && r.data.success) {
+      const currentLab = document.getElementById('labSelect')?.value;
       await reloadLabSelectIfPresent();
+      if (currentLab) {
+       document.getElementById('labSelect').value = currentLab;
+       document.getElementById('labSelect').dispatchEvent(new Event('change'));
+      }
+
     } else {
       alert((r.data && r.data.message) ? r.data.message : `Release failed (status ${r.status})`);
     }
@@ -269,7 +275,12 @@ async function handleRightClick(e, slotId, currentStatus) {
   });
   if (r.networkError) { alert(`Network error — cannot reach backend at ${API_BASE}.`); return; }
   if (r.ok && r.data && r.data.success) {
+    const currentLab = document.getElementById('labSelect')?.value;
     await reloadLabSelectIfPresent();
+    if (currentLab) {
+     document.getElementById('labSelect').value = currentLab;
+     document.getElementById('labSelect').dispatchEvent(new Event('change'));
+    }
   } else {
     alert((r.data && r.data.message) ? r.data.message : `Failed to update slot (status ${r.status})`);
   }
