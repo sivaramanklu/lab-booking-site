@@ -3,9 +3,14 @@ from datetime import date, timedelta, datetime
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from models import db, User, Lab, Timetable, Booking, WeekendDefault, WeekendOverride
+from flask_cors import CORS
+
 
 # ---------- App & DB setup ----------
 app = Flask(__name__)
+# allow only GitHub Pages and local dev
+CORS(app, resources={r"/api/*": {"origins": ["https://sivaramanklu.github.io", "http://localhost:8000"]}}, supports_credentials=True)
+
 
 # Use DATABASE_URL environment variable on Render; fallback to sqlite for local dev
 DATABASE_URL = os.environ.get('DATABASE_URL', 'sqlite:///database.db')
