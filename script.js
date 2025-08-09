@@ -231,7 +231,14 @@ async function handleClick(slotId, status, dateIso) {
     });
     if (r.networkError) { alert(`Network error — cannot reach backend at ${API_BASE}.`); return; }
     if (r.ok && r.data && r.data.success) {
+      const labSelectEl = document.getElementById('labSelect');
+      const currentLab = labSelectEl?.value;
       await reloadLabSelectIfPresent();
+      if (currentLab) {
+        labSelectEl.value = currentLab;
+        await loadTimetable(currentLab); // force reload table for same lab
+      }
+
     } else {
       alert((r.data && r.data.message) ? r.data.message : `Booking failed (status ${r.status})`);
     }
@@ -245,7 +252,14 @@ async function handleClick(slotId, status, dateIso) {
     if (r.networkError) { alert(`Network error — cannot reach backend at ${API_BASE}.`); return; }
     if (r.ok && r.data && r.data.success) {
       const currentLab = document.getElementById('labSelect')?.value;
+      const labSelectEl = document.getElementById('labSelect');
+      const currentLab = labSelectEl?.value;
       await reloadLabSelectIfPresent();
+      if (currentLab) {
+        labSelectEl.value = currentLab;
+        await loadTimetable(currentLab); // force reload table for same lab
+      }
+
       if (currentLab) {
        document.getElementById('labSelect').value = currentLab;
        document.getElementById('labSelect').dispatchEvent(new Event('change'));
