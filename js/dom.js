@@ -9,11 +9,12 @@ export function formatDate(isoStr) {
 }
 
 // Lab select management
-export async function reloadLabSelect(API_BASE) {
+export async function reloadLabSelect(API_BASE, preserveSelection = true) {
   const sel = document.getElementById('labSelect');
   if (!sel) return false;
 
   try {
+    const currentValue = sel.value;
     const r = await safeFetch(`${API_BASE}/api/labs`);
     
     if (r.networkError) {
@@ -32,13 +33,14 @@ export async function reloadLabSelect(API_BASE) {
     ).join('');
     
     if (sel.options.length > 0) {
-      const prev = sel.value;
-      if (prev && [...sel.options].some(o => o.value === prev)) {
-        sel.value = prev;
+      if (preserveSelection && currentValue && 
+          [...sel.options].some(o => o.value === currentValue)) {
+        // Preserve the current selection
+        sel.value = currentValue;
       } else {
+        // Select the first option by default
         sel.value = sel.options[0].value;
       }
-      sel.dispatchEvent(new Event('change'));
     }
     
     return true;

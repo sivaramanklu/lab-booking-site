@@ -1,5 +1,6 @@
 import { setupLoginForm } from './auth.js';
 import { initDashboard } from './dashboard.js';
+import { initAdmin, deleteLab } from './admin.js';
 
 // Initialize based on current page
 document.addEventListener('DOMContentLoaded', () => {
@@ -11,9 +12,12 @@ document.addEventListener('DOMContentLoaded', () => {
     initDashboard();
   }
   
-  // Add admin.js initialization here when needed
+  if (document.getElementById('adminTimetable')) {
+    initAdmin();
+  }
 });
 
 // Expose handlers to global scope
 window.handleSlotClick = handleSlotClick;
 window.handleSlotRightClick = handleSlotRightClick;
+window.deleteLab = deleteLab;
