@@ -46,11 +46,3 @@ class WeekendOverride(db.Model):
     source_day = db.Column(db.String(10), nullable=True)
     created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
 
-class Notification(db.Model):
-    """Simple site-wide notification posted by admin. Only the latest active shown on login."""
-    id = db.Column(db.Integer, primary_key=True)
-    title = db.Column(db.String(200), nullable=True)
-    message = db.Column(db.Text, nullable=True)
-    active = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, server_default=db.func.now())
-    created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
