@@ -221,6 +221,8 @@ async function handleClick(slotId, status, dateIso) {
   if (!currentUser ) { alert("Not logged in"); return; }
   if (!dateIso) { alert("Date not available for this slot."); return; }
 
+  const currentLabSelect = document.getElementById('labSelect');
+
   if (status === "Free") {
     const classInfo = prompt("Enter class info (e.g., 2nd Year A):");
     if (!classInfo) return;
@@ -232,10 +234,9 @@ async function handleClick(slotId, status, dateIso) {
     if (r.networkError) { alert(`Network error — cannot reach backend at ${API_BASE}.`); return; }
     if (r.ok && r.data && r.data.success) {
       await reloadLabSelectIfPresent();
-      const currentLab = document.getElementById('labSelect')?.value; // Get current lab
+      const currentLab = currentLabSelect.value; // Get current lab
       if (currentLab) {
-        document.getElementById('labSelect').value = currentLab; // Retain current lab
-        document.getElementById('labSelect').dispatchEvent(new Event('change')); // Load timetable for current lab
+        currentLabSelect.value = currentLab; // Retain current lab
         await loadTimetable(currentLab); // Explicitly load timetable for current lab
       }
     } else {
@@ -250,11 +251,10 @@ async function handleClick(slotId, status, dateIso) {
     });
     if (r.networkError) { alert(`Network error — cannot reach backend at ${API_BASE}.`); return; }
     if (r.ok && r.data && r.data.success) {
-      const currentLab = document.getElementById('labSelect')?.value; // Get current lab
       await reloadLabSelectIfPresent();
+      const currentLab = currentLabSelect.value; // Get current lab
       if (currentLab) {
-        document.getElementById('labSelect').value = currentLab; // Retain current lab
-        document.getElementById('labSelect').dispatchEvent(new Event('change')); // Load timetable for current lab
+        currentLabSelect.value = currentLab; // Retain current lab
         await loadTimetable(currentLab); // Explicitly load timetable for current lab
       }
     } else {
@@ -262,7 +262,6 @@ async function handleClick(slotId, status, dateIso) {
     }
   }
 }
-
 
 // ================ Admin Right-click (block/unblock Regular) ================
 async function handleRightClick(e, slotId, currentStatus) {
