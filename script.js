@@ -236,7 +236,7 @@ async function handleClick(slotId, status, dateIso) {
     if (r.ok && r.data && r.data.success) {
       await reloadLabSelectIfPresent(); // Reload lab options
       currentLabSelect.value = currentLab; // Set the dropdown back to the current lab
-      await loadTimetable(currentLab); // Load timetable for the current lab
+      await loadTimetable(currentLabSelect.value); // Load timetable for the current lab
     } else {
       alert((r.data && r.data.message) ? r.data.message : `Booking failed (status ${r.status})`);
     }
@@ -251,7 +251,7 @@ async function handleClick(slotId, status, dateIso) {
     if (r.ok && r.data && r.data.success) {
       await reloadLabSelectIfPresent(); // Reload lab options
       currentLabSelect.value = currentLab; // Set the dropdown back to the current lab
-      await loadTimetable(currentLab); // Load timetable for the current lab
+      await loadTimetable(currentLabSelect.value); // Load timetable for the current lab
     } else {
       alert((r.data && r.data.message) ? r.data.message : `Release failed (status ${r.status})`);
     }
