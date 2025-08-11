@@ -1,4 +1,4 @@
-// ===== Full script.js =====
+// ===== Full script.js (updated) =====
 
 // ====== Shared state ======
 const user = JSON.parse(localStorage.getItem("user") || "null");
@@ -44,10 +44,18 @@ function formatDate(isoStr) {
 }
 
 // reload lab dropdown if present
-async function reloadLabSelectIfPresent() {
+// prevValue: optional — if provided, will be selected after reload. If omitted, the function will
+// attempt to preserve the select's current value (captured before replacing options).
+async function reloadLabSelectIfPresent(prevValue) {
   try {
     const sel = document.getElementById('labSelect');
     if (!sel) return;
+
+    // capture current selection (if caller didn't provide explicit prevValue)
+    const desired = (typeof prevValue !== 'undefined' && prevValue !== null)
+      ? String(prevValue)
+      : (sel.value ? String(sel.value) : null);
+
     const r = await safeFetch(`${API_BASE}/api/labs`);
     if (r.networkError) {
       sel.innerHTML = `<option value="">(Cannot reach backend)</option>`;
@@ -59,13 +67,15 @@ async function reloadLabSelectIfPresent() {
     }
     const labs = r.data || [];
     sel.innerHTML = labs.map(l => `<option value="${l.id}">${l.name}</option>`).join('');
+
     if (sel.options.length > 0) {
-      const prev = sel.value;
-      if (prev && [...sel.options].some(o=>o.value === prev)) {
-        sel.value = prev;
+      // try to set to desired value if present, otherwise first option
+      if (desired && [...sel.options].some(o => o.value === desired)) {
+        sel.value = desired;
       } else {
         sel.value = sel.options[0].value;
       }
+      // notify listeners now that sel.value is set correctly
       sel.dispatchEvent(new Event('change'));
     }
   } catch (e) {
@@ -106,22 +116,6 @@ if (loginForm) {
 }
 
 // ====================== DASHBOARD ======================
-// Ensure loadTimetable is globally accessible
-window.loadTimetable = async function(labId) {
-  timetableDiv.innerHTML = "Loading...";
-  const r = await safeFetch(`${API_BASE}/api/timetable/${labId}`);
-  if (r.networkError) {
-    timetableDiv.innerHTML = `<div style="color:#b91c1c">Cannot reach backend at ${API_BASE}.</div>`;
-    return;
-  }
-  if (!r.ok) {
-    timetableDiv.innerHTML = `<div style="color:#b91c1c">Failed to load timetable (status ${r.status}).</div>`;
-    return;
-  }
-  const slots = r.data || [];
-  timetableDiv.innerHTML = generateTable(slots);
-};
-
 const labSelect = document.getElementById("labSelect");
 const timetableDiv = document.getElementById("timetable");
 
@@ -156,15 +150,7 @@ if (labSelect && timetableDiv) {
   const days = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
   const periods = ["09:00-09:50","10:00-10:50","11:00-11:50","12:00-12:50","01:00-01:50","02:00-02:50","03:00-03:50","04:00-04:50"];
 
-  labSelect.addEventListener('change', () => {
-    if (labSelect.value) loadTimetable(labSelect.value);
-  });
-
-  (async function initDash(){
-    await reloadLabSelectIfPresent();
-    if (labSelect.options.length) loadTimetable(labSelect.value);
-  })();
-
+  // single source of timetable loading
   async function loadTimetable(labId) {
     timetableDiv.innerHTML = "Loading...";
     const r = await safeFetch(`${API_BASE}/api/timetable/${labId}`);
@@ -179,6 +165,18 @@ if (labSelect && timetableDiv) {
     const slots = r.data || [];
     timetableDiv.innerHTML = generateTable(slots);
   }
+
+  // expose globally for inline usage / other pages
+  window.loadTimetable = loadTimetable;
+
+  labSelect.addEventListener('change', () => {
+    if (labSelect.value) loadTimetable(labSelect.value);
+  });
+
+  (async function initDash(){
+    // reload will dispatch 'change' after setting selected value, so no separate loadTimetable call needed
+    await reloadLabSelectIfPresent();
+  })();
 
   function generateTable(slots) {
     // map day->date for header
@@ -238,6 +236,7 @@ async function handleClick(slotId, status, dateIso) {
   if (!dateIso) { alert("Date not available for this slot."); return; }
 
   const currentLabSelect = document.getElementById('labSelect');
+  if (!currentLabSelect) { alert('Lab selector missing'); return; }
   const currentLab = currentLabSelect.value; // Store the current lab before reloading
 
   if (status === "Free") {
@@ -250,9 +249,8 @@ async function handleClick(slotId, status, dateIso) {
     });
     if (r.networkError) { alert(`Network error — cannot reach backend at ${API_BASE}.`); return; }
     if (r.ok && r.data && r.data.success) {
-      await reloadLabSelectIfPresent(); // Reload lab options
-      currentLabSelect.value = currentLab; // Set the dropdown back to the current lab
-      await loadTimetable(currentLabSelect.value); // Load timetable for the current lab
+      // Reload lab options and preserve current lab selection; reload will dispatch 'change' and load timetable
+      await reloadLabSelectIfPresent(currentLab);
     } else {
       alert((r.data && r.data.message) ? r.data.message : `Booking failed (status ${r.status})`);
     }
@@ -265,9 +263,8 @@ async function handleClick(slotId, status, dateIso) {
     });
     if (r.networkError) { alert(`Network error — cannot reach backend at ${API_BASE}.`); return; }
     if (r.ok && r.data && r.data.success) {
-      await reloadLabSelectIfPresent(); // Reload lab options
-      currentLabSelect.value = currentLab; // Set the dropdown back to the current lab
-      await loadTimetable(currentLabSelect.value); // Load timetable for the current lab
+      // Reload lab options and preserve current lab selection; reload will dispatch 'change' and load timetable
+      await reloadLabSelectIfPresent(currentLab);
     } else {
       alert((r.data && r.data.message) ? r.data.message : `Release failed (status ${r.status})`);
     }
@@ -294,11 +291,7 @@ async function handleRightClick(e, slotId, currentStatus) {
   if (r.networkError) { alert(`Network error — cannot reach backend at ${API_BASE}.`); return; }
   if (r.ok && r.data && r.data.success) {
     const currentLab = document.getElementById('labSelect')?.value;
-    await reloadLabSelectIfPresent();
-    if (currentLab) {
-     document.getElementById('labSelect').value = currentLab;
-     document.getElementById('labSelect').dispatchEvent(new Event('change'));
-    }
+    await reloadLabSelectIfPresent(currentLab);
   } else {
     alert((r.data && r.data.message) ? r.data.message : `Failed to update slot (status ${r.status})`);
   }
