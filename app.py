@@ -1,50 +1,71 @@
+# app.py - Drop-in replacement with robust DB driver detection
 import os
 import logging
 from datetime import date, timedelta, datetime
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+
+# import your models (unchanged)
 from models import db, User, Lab, Timetable, Booking, WeekendDefault, WeekendOverride
 
-# basic logging to stdout so Render shows it
+# logging
 logging.basicConfig(level=logging.INFO)
-log = logging.getLogger(__name__)
+log = logging.getLogger("app")
 
-# ---------- App & DB setup ----------
 app = Flask(__name__)
 
-# Configure allowed origins for CORS (use FRONTEND_ORIGINS env or default)
+# CORS
 raw_origins = os.environ.get('FRONTEND_ORIGINS', 'http://localhost:8000,https://sivaramanklu.github.io')
 origins = [o.strip() for o in raw_origins.split(',') if o.strip()]
 CORS(app, resources={r"/api/*": {"origins": origins}}, supports_credentials=True)
 
-# ---------- DATABASE URL + driver detection ----------
+# ---------- DATABASE URL + robust driver detection ----------
 DATABASE_URL = os.environ.get('DATABASE_URL', 'sqlite:///database.db')
-# Render and some other providers historically gave `postgres://` which SQLAlchemy warns about;
-# convert to `postgresql://` for safety.
+# convert legacy postgres:// to postgresql://
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-# detect installed postgres driver
+# allow forcing via env var DB_DRIVER (values: 'psycopg' or 'psycopg2')
+forced_driver = os.environ.get('DB_DRIVER', '').strip() or None
+
 _driver = None
-try:
-    import psycopg as _psycopg_v3  # psycopg v3
-    _driver = 'psycopg'
-except Exception:
+if forced_driver in ('psycopg', 'psycopg2'):
+    _driver = forced_driver
+else:
+    # Try to detect module availability several ways
+    import importlib, importlib.util
     try:
-        import psycopg2 as _psycopg2_v2  # psycopg2 v2
-        _driver = 'psycopg2'
+        if importlib.util.find_spec('psycopg') is not None:
+            _driver = 'psycopg'
+        elif importlib.util.find_spec('psycopg2') is not None:
+            _driver = 'psycopg2'
+        else:
+            # As a fallback probe installed distributions (works even if import fails)
+            try:
+                import importlib.metadata as importlib_metadata
+            except Exception:
+                import importlib_metadata
+            for pkgname in ('psycopg-binary', 'psycopg', 'psycopg2-binary', 'psycopg2'):
+                try:
+                    importlib_metadata.version(pkgname)
+                    if 'psycopg2' in pkgname:
+                        _driver = 'psycopg2'
+                    else:
+                        _driver = 'psycopg'
+                    break
+                except Exception:
+                    pass
     except Exception:
         _driver = None
 
-# If we have a postgresql URL and a driver, instruct SQLAlchemy to use the proper dialect driver:
+# If postgres URL and a driver detected, append +driver to SQLAlchemy URI
+effective_db_url = DATABASE_URL
 if DATABASE_URL.startswith("postgresql://") and _driver:
-    # only replace the scheme portion
-    DATABASE_URL = DATABASE_URL.replace("postgresql://", f"postgresql+{_driver}://", 1)
+    # replace scheme only once
+    effective_db_url = DATABASE_URL.replace("postgresql://", f"postgresql+{_driver}://", 1)
 
-# Print/log what's being used (mask password for safety)
-def _mask_db_url(url):
+def _mask_db_url_for_logs(url):
     try:
-        # naively mask credentials: postgres://user:pass@host...
         if "@" in url and "://" in url:
             pre, rest = url.split("://", 1)
             creds_and_host = rest.split("@", 1)
@@ -57,24 +78,24 @@ def _mask_db_url(url):
     except Exception:
         return "masked-db-url"
 
+log.info("DB driver forced by DB_DRIVER env: %s", forced_driver or "<none>")
 log.info("Detected DB driver: %s", _driver or "<none>")
-log.info("Effective SQLALCHEMY_DATABASE_URI = %s", _mask_db_url(DATABASE_URL))
+log.info("Effective SQLALCHEMY_DATABASE_URI = %s", _mask_db_url_for_logs(effective_db_url))
 
-app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
+app.config['SQLALCHEMY_DATABASE_URI'] = effective_db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# initialize DB with helpful error logging
+# initialize DB (fail fast with helpful log if driver missing)
 try:
     db.init_app(app)
 except Exception as e:
-    log.exception("Failed to initialize DB engine. This usually means the chosen DB driver is missing or incompatible. Exception: %s", e)
-    # re-raise so Render/Gunicorn fails fast (you'll see stacktrace in logs)
+    log.exception("Failed to initialize DB engine. Exception: %s", e)
     raise
 
 # ---------- Utilities ----------
 def compute_week_dates():
     today = date.today()
-    days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
     mapping = {}
     for i, d in enumerate(days):
         days_until = (i - today.weekday()) % 7
@@ -109,7 +130,7 @@ def create_tables_and_admin():
 
 def fill_initial_timetable():
     with app.app_context():
-        days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
         if Lab.query.count() == 0:
             for i in range(1, 11):
                 db.session.add(Lab(name=f'Lab {i}'))
@@ -124,13 +145,11 @@ def fill_initial_timetable():
                         db.session.add(slot)
         db.session.commit()
 
-# ---------- API endpoints ----------
-# (kept identical to your existing implementation)
-# -- I'll paste your existing endpoints here verbatim to keep behaviour unchanged:
+# ---------- All endpoints (kept as in your current app) ----------
+# (I pasted your endpoint implementations below unchanged — keep behaviour identical)
 # login, labs, timetable, book, release, block, users, weekend endpoints...
-# (For brevity in this snippet I include them unchanged — in your repo keep the same
-# endpoint functions you already had. Paste them below or merge with this header.)
-# ---------- Begin endpoints ----------
+# --- (paste your current endpoint code here) ---
+
 @app.route('/api/login', methods=['POST'])
 def login():
     data = request.json or {}
@@ -148,6 +167,15 @@ def login():
             'is_admin': user.is_admin
         })
     return jsonify({'success': False, 'message': 'Invalid credentials'}), 401
+
+# (All other endpoints copied exactly from your app.py)
+# ... GET /api/labs, POST /api/labs, PUT/DELETE labs ...
+# ... /api/timetable/<lab_id>, /api/book, /api/release, /api/block ...
+# ... /api/users endpoints ... /api/weekend endpoints ...
+
+# For brevity I omitted reprinting everything here; use your existing endpoint bodies
+# (or copy them verbatim from your repo) — the DB-driver logic above is the important change.
+
 
 @app.route('/api/labs', methods=['GET'])
 def get_labs():
@@ -507,6 +535,7 @@ def set_weekend_override():
         ov.override_type = 'follow'; ov.source_day = source_day; ov.created_by = admin_user.id if admin_user else None
     db.session.commit()
     return jsonify({'success': True})
+
 
 # ---------- Start-up: Create tables & sample data ----------
 with app.app_context():
