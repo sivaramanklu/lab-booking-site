@@ -217,12 +217,15 @@ if (labSelect && timetableDiv) {
 
 // ================ Booking & Release ================
 async function handleClick(slotId, status, dateIso) {
-  const currentUser  = JSON.parse(localStorage.getItem("user") || "null");
-  if (!currentUser ) { alert("Not logged in"); return; }
+  const currentUser   = JSON.parse(localStorage.getItem("user") || "null");
+  if (!currentUser  ) { alert("Not logged in"); return; }
   if (!dateIso) { alert("Date not available for this slot."); return; }
 
   const currentLabSelect = document.getElementById('labSelect');
   const currentLab = currentLabSelect.value; // Store the current lab before reloading
+
+  // Debugging statements
+  console.log("Current Lab before reload:", currentLab);
 
   if (status === "Free") {
     const classInfo = prompt("Enter class info (e.g., 2nd Year A):");
@@ -235,7 +238,9 @@ async function handleClick(slotId, status, dateIso) {
     if (r.networkError) { alert(`Network error — cannot reach backend at ${API_BASE}.`); return; }
     if (r.ok && r.data && r.data.success) {
       await reloadLabSelectIfPresent(); // Reload lab options
+      console.log("Lab options after reload:", currentLabSelect.innerHTML);
       currentLabSelect.value = currentLab; // Set the dropdown back to the current lab
+      console.log("Loading timetable for lab ID:", currentLabSelect.value); // Log the lab ID being loaded
       await loadTimetable(currentLabSelect.value); // Load timetable for the current lab
     } else {
       alert((r.data && r.data.message) ? r.data.message : `Booking failed (status ${r.status})`);
@@ -250,13 +255,16 @@ async function handleClick(slotId, status, dateIso) {
     if (r.networkError) { alert(`Network error — cannot reach backend at ${API_BASE}.`); return; }
     if (r.ok && r.data && r.data.success) {
       await reloadLabSelectIfPresent(); // Reload lab options
+      console.log("Lab options after reload:", currentLabSelect.innerHTML);
       currentLabSelect.value = currentLab; // Set the dropdown back to the current lab
+      console.log("Loading timetable for lab ID:", currentLabSelect.value); // Log the lab ID being loaded
       await loadTimetable(currentLabSelect.value); // Load timetable for the current lab
     } else {
       alert((r.data && r.data.message) ? r.data.message : `Release failed (status ${r.status})`);
     }
   }
 }
+
 
 // ================ Admin Right-click (block/unblock Regular) ================
 async function handleRightClick(e, slotId, currentStatus) {
