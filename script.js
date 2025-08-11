@@ -217,8 +217,8 @@ if (labSelect && timetableDiv) {
 
 // ================ Booking & Release ================
 async function handleClick(slotId, status, dateIso) {
-  const currentUser = JSON.parse(localStorage.getItem("user") || "null");
-  if (!currentUser) { alert("Not logged in"); return; }
+  const currentUser  = JSON.parse(localStorage.getItem("user") || "null");
+  if (!currentUser ) { alert("Not logged in"); return; }
   if (!dateIso) { alert("Date not available for this slot."); return; }
 
   if (status === "Free") {
@@ -227,11 +227,16 @@ async function handleClick(slotId, status, dateIso) {
     const r = await safeFetch(`${API_BASE}/api/book`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: slotId, date: dateIso, faculty_id: currentUser.user_id, class_info: classInfo })
+      body: JSON.stringify({ id: slotId, date: dateIso, faculty_id: currentUser .user_id, class_info: classInfo })
     });
     if (r.networkError) { alert(`Network error — cannot reach backend at ${API_BASE}.`); return; }
     if (r.ok && r.data && r.data.success) {
       await reloadLabSelectIfPresent();
+      const currentLab = document.getElementById('labSelect')?.value; // Get current lab
+      if (currentLab) {
+        document.getElementById('labSelect').value = currentLab; // Retain current lab
+        document.getElementById('labSelect').dispatchEvent(new Event('change')); // Load timetable for current lab
+      }
     } else {
       alert((r.data && r.data.message) ? r.data.message : `Booking failed (status ${r.status})`);
     }
@@ -240,22 +245,22 @@ async function handleClick(slotId, status, dateIso) {
     const r = await safeFetch(`${API_BASE}/api/release`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: slotId, date: dateIso, faculty_id: currentUser.user_id, is_admin: currentUser.is_admin })
+      body: JSON.stringify({ id: slotId, date: dateIso, faculty_id: currentUser .user_id, is_admin: currentUser .is_admin })
     });
     if (r.networkError) { alert(`Network error — cannot reach backend at ${API_BASE}.`); return; }
     if (r.ok && r.data && r.data.success) {
-      const currentLab = document.getElementById('labSelect')?.value;
+      const currentLab = document.getElementById('labSelect')?.value; // Get current lab
       await reloadLabSelectIfPresent();
       if (currentLab) {
-       document.getElementById('labSelect').value = currentLab;
-       document.getElementById('labSelect').dispatchEvent(new Event('change'));
+        document.getElementById('labSelect').value = currentLab; // Retain current lab
+        document.getElementById('labSelect').dispatchEvent(new Event('change')); // Load timetable for current lab
       }
-
     } else {
       alert((r.data && r.data.message) ? r.data.message : `Release failed (status ${r.status})`);
     }
   }
 }
+
 
 // ================ Admin Right-click (block/unblock Regular) ================
 async function handleRightClick(e, slotId, currentStatus) {
