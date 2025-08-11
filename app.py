@@ -2,33 +2,27 @@ import os
 from datetime import date, timedelta, datetime
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from models import db, User, Lab, Timetable, Booking, WeekendDefault, WeekendOverride
-from flask_cors import CORS
 
+from models import db, User, Lab, Timetable, Booking, WeekendDefault, WeekendOverride, Notification
 
 # ---------- App & DB setup ----------
 app = Flask(__name__)
-# allow only GitHub Pages and local dev
-CORS(app, resources={r"/api/*": {"origins": ["https://sivaramanklu.github.io", "http://localhost:8000"]}}, supports_credentials=True)
 
-
-# Use DATABASE_URL environment variable on Render; fallback to sqlite for local dev
+# DATABASE_URL (Render provides this). Fallback to sqlite for local dev.
 DATABASE_URL = os.environ.get('DATABASE_URL', 'sqlite:///database.db')
-# Some PAAS (older) provide postgres:// — SQLAlchemy prefers postgresql://
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db.init_app(app)
 
-# Configure allowed origins for CORS:
-# Option A (recommended): set FRONTEND_ORIGINS env var as comma-separated list, e.g.
-# FRONTEND_ORIGINS="https://sivaramanklu.github.io,http://localhost:8000"
+# CORS: allow specific origins via FRONTEND_ORIGINS or sensible defaults
 raw_origins = os.environ.get('FRONTEND_ORIGINS', 'http://localhost:8000,https://sivaramanklu.github.io')
 origins = [o.strip() for o in raw_origins.split(',') if o.strip()]
-# For quick dev you can use CORS(app) but in production prefer listing explicit origins
 CORS(app, resources={r"/api/*": {"origins": origins}}, supports_credentials=True)
+
+db.init_app(app)
+
 
 # ---------- Utilities ----------
 def compute_week_dates():
@@ -39,7 +33,6 @@ def compute_week_dates():
     days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
     mapping = {}
     for i, d in enumerate(days):
-        # weekday(): Monday=0
         days_until = (i - today.weekday()) % 7
         mapping[d] = today + timedelta(days=days_until)
     return mapping
@@ -73,12 +66,15 @@ def create_tables_and_admin():
 def fill_initial_timetable():
     with app.app_context():
         days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
+        # create default labs only if none exist
         if Lab.query.count() == 0:
             for i in range(1, 11):
                 db.session.add(Lab(name=f'Lab {i}'))
             db.session.commit()
+
         periods = range(1, 9)
         labs = Lab.query.all()
+        # For each lab/day/period ensure template slot exists (non-destructive)
         for lab in labs:
             for day in days:
                 for p in periods:
@@ -87,7 +83,7 @@ def fill_initial_timetable():
                         db.session.add(slot)
         db.session.commit()
 
-# ---------- API: Auth (simple), Labs, Timetable, Booking ----------
+# ---------- API: Auth, Labs, Timetable, Booking ----------
 
 @app.route('/api/login', methods=['POST'])
 def login():
@@ -107,10 +103,29 @@ def login():
         })
     return jsonify({'success': False, 'message': 'Invalid credentials'}), 401
 
+@app.route('/api/change_password', methods=['POST'])
+def change_password():
+    data = request.json or {}
+    faculty_id = data.get('faculty_id')
+    old = data.get('old_password')
+    new = data.get('new_password')
+    if not faculty_id or not new:
+        return jsonify({'success': False, 'message': 'Missing fields'}), 400
+    user = User.query.filter_by(faculty_id=faculty_id).first()
+    if not user:
+        return jsonify({'success': False, 'message': 'User not found'}), 404
+    # If old provided, verify it; if not provided and requester is admin, allow change
+    if old:
+        if user.password != old:
+            return jsonify({'success': False, 'message': 'Old password mismatch'}), 403
+    user.password = new
+    db.session.commit()
+    return jsonify({'success': True})
+
 # labs
 @app.route('/api/labs', methods=['GET'])
 def get_labs():
-    labs = Lab.query.all()
+    labs = Lab.query.order_by(Lab.id).all()
     return jsonify([{'id': l.id, 'name': l.name} for l in labs])
 
 @app.route('/api/labs', methods=['POST'])
@@ -123,12 +138,13 @@ def create_lab():
     lab = Lab(name=name)
     db.session.add(lab)
     db.session.commit()
-    # create template slots
+    # create template slots (non-destructive)
     days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
     for day in days:
         for p in range(1,9):
-            t = Timetable(lab_id=lab.id, day=day, period=p, status='Free')
-            db.session.add(t)
+            if not Timetable.query.filter_by(lab_id=lab.id, day=day, period=p).first():
+                t = Timetable(lab_id=lab.id, day=day, period=p, status='Free')
+                db.session.add(t)
     db.session.commit()
     return jsonify({'success': True, 'id': lab.id, 'name': lab.name})
 
@@ -152,7 +168,6 @@ def delete_lab(lab_id):
     if not ok: return jsonify({'success': False, 'message': resp}), 403
     lab = Lab.query.get(lab_id)
     if not lab: return jsonify({'success': False, 'message': 'Lab not found'}), 404
-    # delete related timetables and bookings and defaults/overrides
     timetable_ids = [t.id for t in Timetable.query.filter_by(lab_id=lab_id).all()]
     if timetable_ids:
         Booking.query.filter(Booking.timetable_id.in_(timetable_ids)).delete(synchronize_session=False)
@@ -165,10 +180,13 @@ def delete_lab(lab_id):
 
 @app.route('/api/timetable/<int:lab_id>', methods=['GET'])
 def get_timetable(lab_id):
-    # auto-release past bookings
+    # auto-release past bookings (non-destructive)
     today = date.today()
-    Booking.query.filter(Booking.date < today).delete(synchronize_session=False)
-    db.session.commit()
+    try:
+        Booking.query.filter(Booking.date < today).delete(synchronize_session=False)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
 
     week_dates = compute_week_dates()
     template_slots = Timetable.query.filter_by(lab_id=lab_id).all()
@@ -194,7 +212,6 @@ def get_timetable(lab_id):
                         status = 'Free'
                         class_info = None
                 else:
-                    # lab-specific default, else global default, else template slot status
                     wd = WeekendDefault.query.filter_by(lab_id=lab_id, day=slot.day).first()
                     if not wd:
                         wd = WeekendDefault.query.filter_by(lab_id=None, day=slot.day).first()
@@ -259,7 +276,7 @@ def book_slot():
     if slot.day not in ['Saturday','Sunday'] and slot.status == 'Regular':
         return jsonify({'success': False, 'message': 'This period is marked Regular by admin'}), 400
 
-    # handle weekend patterns: if weekend is blocked by default/override as Regular, disallow booking
+    # weekend blocking rules
     if slot.day in ['Saturday','Sunday']:
         week_dates = compute_week_dates()
         slot_date = week_dates.get(slot.day)
@@ -338,7 +355,7 @@ def block_slot():
 def list_users():
     ok, resp = is_requester_admin_from_args_or_json()
     if not ok: return jsonify({'success': False, 'message': resp}), 403
-    users = User.query.all()
+    users = User.query.order_by(User.id).all()
     out = [{'id': u.id, 'name': u.name, 'faculty_id': u.faculty_id, 'is_admin': u.is_admin} for u in users]
     return jsonify(out)
 
@@ -378,7 +395,6 @@ def delete_user(user_id):
     if not ok: return jsonify({'success': False, 'message': resp}), 403
     u = User.query.get(user_id)
     if not u: return jsonify({'success': False, 'message': 'User not found'}), 404
-    # prevent deleting last admin or self-delete easily
     requester = data.get('requester_faculty_id')
     req_user = User.query.filter_by(faculty_id=requester).first() if requester else None
     if req_user and req_user.faculty_id == u.faculty_id:
@@ -483,7 +499,6 @@ def set_weekend_override():
     week_dates = compute_week_dates()
     target_date = week_dates.get(day)
     if not source_day:
-        # clear override
         WeekendOverride.query.filter_by(lab_id=lab_val, day=day, target_date=target_date).delete(synchronize_session=False)
         db.session.commit()
         return jsonify({'success': True, 'message': 'Override cleared'})
@@ -501,6 +516,51 @@ def set_weekend_override():
     db.session.commit()
     return jsonify({'success': True})
 
+# ---------------- Notifications ----------------
+@app.route('/api/notifications', methods=['GET'])
+def list_notifications():
+    notifs = Notification.query.order_by(Notification.created_at.desc()).limit(20).all()
+    out = []
+    for n in notifs:
+        out.append({
+            'id': n.id,
+            'title': n.title,
+            'message': n.message,
+            'active': n.active,
+            'created_at': n.created_at.isoformat() if n.created_at else None,
+            'created_by': n.created_by
+        })
+    return jsonify(out)
+
+@app.route('/api/notifications', methods=['POST'])
+def create_notification():
+    data = request.json or {}
+    ok, resp = is_requester_admin_from_args_or_json()
+    if not ok: 
+        return jsonify({'success': False, 'message': resp}), 403
+    admin = resp
+    title = (data.get('title') or '')[:200]
+    message = (data.get('message') or '')[:2000]
+    active = bool(data.get('active', True))
+    if active:
+        Notification.query.update({Notification.active: False})
+    n = Notification(title=title, message=message, active=active, created_by=admin.id)
+    db.session.add(n)
+    db.session.commit()
+    return jsonify({'success': True, 'id': n.id})
+
+@app.route('/api/notifications/<int:notif_id>', methods=['DELETE'])
+def delete_notification(notif_id):
+    ok, resp = is_requester_admin_from_args_or_json()
+    if not ok:
+        return jsonify({'success': False, 'message': resp}), 403
+    n = Notification.query.get(notif_id)
+    if not n:
+        return jsonify({'success': False, 'message': 'Notification not found'}), 404
+    db.session.delete(n)
+    db.session.commit()
+    return jsonify({'success': True})
+
 # ---------- Start-up: Create tables & sample data ----------
 with app.app_context():
     create_tables_and_admin()
@@ -514,5 +574,4 @@ with app.app_context():
 
 # ---------- Run ----------
 if __name__ == '__main__':
-    # Local dev server
     app.run(host='0.0.0.0', debug=True)
