@@ -236,6 +236,7 @@ async function handleClick(slotId, status, dateIso) {
       if (currentLab) {
         document.getElementById('labSelect').value = currentLab; // Retain current lab
         document.getElementById('labSelect').dispatchEvent(new Event('change')); // Load timetable for current lab
+        await loadTimetable(currentLab); // Explicitly load timetable for current lab
       }
     } else {
       alert((r.data && r.data.message) ? r.data.message : `Booking failed (status ${r.status})`);
@@ -254,6 +255,7 @@ async function handleClick(slotId, status, dateIso) {
       if (currentLab) {
         document.getElementById('labSelect').value = currentLab; // Retain current lab
         document.getElementById('labSelect').dispatchEvent(new Event('change')); // Load timetable for current lab
+        await loadTimetable(currentLab); // Explicitly load timetable for current lab
       }
     } else {
       alert((r.data && r.data.message) ? r.data.message : `Release failed (status ${r.status})`);
