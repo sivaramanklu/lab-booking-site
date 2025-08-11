@@ -222,6 +222,7 @@ async function handleClick(slotId, status, dateIso) {
   if (!dateIso) { alert("Date not available for this slot."); return; }
 
   const currentLabSelect = document.getElementById('labSelect');
+  const currentLab = currentLabSelect.value; // Store the current lab before reloading
 
   if (status === "Free") {
     const classInfo = prompt("Enter class info (e.g., 2nd Year A):");
@@ -233,12 +234,9 @@ async function handleClick(slotId, status, dateIso) {
     });
     if (r.networkError) { alert(`Network error — cannot reach backend at ${API_BASE}.`); return; }
     if (r.ok && r.data && r.data.success) {
-      await reloadLabSelectIfPresent();
-      const currentLab = currentLabSelect.value; // Get current lab
-      if (currentLab) {
-        currentLabSelect.value = currentLab; // Retain current lab
-        await loadTimetable(currentLab); // Explicitly load timetable for current lab
-      }
+      await reloadLabSelectIfPresent(); // Reload lab options
+      currentLabSelect.value = currentLab; // Set the dropdown back to the current lab
+      await loadTimetable(currentLab); // Load timetable for the current lab
     } else {
       alert((r.data && r.data.message) ? r.data.message : `Booking failed (status ${r.status})`);
     }
@@ -251,12 +249,9 @@ async function handleClick(slotId, status, dateIso) {
     });
     if (r.networkError) { alert(`Network error — cannot reach backend at ${API_BASE}.`); return; }
     if (r.ok && r.data && r.data.success) {
-      await reloadLabSelectIfPresent();
-      const currentLab = currentLabSelect.value; // Get current lab
-      if (currentLab) {
-        currentLabSelect.value = currentLab; // Retain current lab
-        await loadTimetable(currentLab); // Explicitly load timetable for current lab
-      }
+      await reloadLabSelectIfPresent(); // Reload lab options
+      currentLabSelect.value = currentLab; // Set the dropdown back to the current lab
+      await loadTimetable(currentLab); // Load timetable for the current lab
     } else {
       alert((r.data && r.data.message) ? r.data.message : `Release failed (status ${r.status})`);
     }
