@@ -536,6 +536,9 @@ def set_weekend_override():
     db.session.commit()
     return jsonify({'success': True})
 
+@app.route('/health')
+def health_check():
+    return 'OK', 200
 
 # ---------- Start-up: Create tables & sample data ----------
 with app.app_context():
