@@ -1,0 +1,12 @@
+name: Keep Render Instance Alive
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'  # every 5 minutes
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Render App
+        run: curl -X GET https://lab-booking-site.onrender.com > /dev/null 2>&1
