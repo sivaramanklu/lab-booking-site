@@ -1,8 +1,8 @@
 name: Keep Render Instance Alive
 
 on:
-  # schedule:
-  #   - cron: '*/5 * * * *'  # every 5 minutes
+  schedule:
+    - cron: '*/5 * * * *'  # every 5 minutes
   workflow_dispatch:
 
 jobs:
